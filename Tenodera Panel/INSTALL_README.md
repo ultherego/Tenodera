@@ -1,21 +1,21 @@
-# Tenodera — Instalacja
+# Tenodera — Installation
 
-Tenodera składa się z dwóch niezależnych komponentów:
+Tenodera consists of two independent components:
 
-- **Panel** — centralny serwer webowy + UI (instalowany na **jednym** hoście)
-- **Agent** — daemon zarządzania systemem (instalowany na **każdym** zarządzanym hoście)
+- **Panel** — central web server + UI (installed on **one** host)
+- **Agent** — system management daemon (installed on **each** managed host)
 
-## Architektura połączeń
+## Connection architecture
 
-Panel łączy się z agentami na dwa sposoby:
+The Panel connects to agents in two ways:
 
-### Tryb SSH (domyślny) — model Cockpit
+### SSH mode (default) — Cockpit model
 
-Agent nasłuchuje **tylko na localhost** (`127.0.0.1:9091`). Panel otwiera tunel SSH
-na zarządzany host za pomocą `sshpass`, a następnie łączy się z agentem przez ten tunel.
-Hasło logowania użytkownika jest przechowywane w sesji i używane do uwierzytelniania SSH
-(ten sam model co Cockpit). Wymaga `PasswordAuthentication yes` w sshd zdalnych hostów.
-Nie wymaga kluczy API ani otwierania portów agenta na zewnątrz.
+The agent listens **only on localhost** (`127.0.0.1:9091`). The panel opens an SSH tunnel
+to the managed host using `sshpass`, then connects to the agent through that tunnel.
+The user's login password is stored in the session and used for SSH authentication
+(same model as Cockpit). Requires `PasswordAuthentication yes` in sshd on remote hosts.
+Does not require API keys or opening agent ports externally.
 
 ```
 ┌────────────────┐      SSH tunnel       ┌──────────────────────────────┐
@@ -24,13 +24,13 @@ Nie wymaga kluczy API ani otwierania portów agenta na zewnątrz.
 │  (gateway+UI)  │ ═══════════════════►   │  Host B                     │
 │                │      port 22          │  Agent 127.0.0.1:9091       │
 └────────────────┘                       └──────────────────────────────┘
-     1 serwer                              N hostów (port 9091 zamknięty)
+     1 server                              N hosts (port 9091 closed)
 ```
 
-### Tryb Direct (alternatywny) — agent dostępny z sieci
+### Direct mode (alternative) — network-accessible agent
 
-Agent nasłuchuje na `0.0.0.0:9091` z kluczem API i opcjonalnie TLS.
-Panel łączy się bezpośrednio przez WebSocket. Wymaga otwarcia portu 9091.
+The agent listens on `0.0.0.0:9091` with an API key and optional TLS.
+The panel connects directly via WebSocket. Requires opening port 9091.
 
 ```
 ┌────────────────┐     WebSocket (TLS)    ┌───────────────────────────┐
@@ -40,121 +40,121 @@ Panel łączy się bezpośrednio przez WebSocket. Wymaga otwarcia portu 9091.
 
 ---
 
-## Wymagania
+## Requirements
 
-### Systemowe
+### System
 
-| Komponent | Wymagania |
-|-----------|-----------|
+| Component | Requirements |
+|-----------|-------------|
 | Panel | Linux (x86_64/aarch64), systemd, PAM, `make`, `sshpass` |
 | Agent | Linux (x86_64/aarch64), systemd, `make` |
 
-### Sprzętowe (minimum)
+### Hardware (minimum)
 
-| Komponent | CPU | RAM | Dysk |
+| Component | CPU | RAM | Disk |
 |-----------|-----|-----|------|
 | Panel | 1 vCPU | 512 MB | 200 MB |
 | Agent | 1 vCPU | 128 MB | 50 MB |
-| Budowanie Panelu | 2 vCPU | 4 GB | 2 GB |
-| Budowanie Agenta | 2 vCPU | 2 GB | 1 GB |
+| Building Panel | 2 vCPU | 4 GB | 2 GB |
+| Building Agent | 2 vCPU | 2 GB | 1 GB |
 
-> Wymogi dyskowe dotyczą zainstalowanego komponentu. Budowanie wymaga więcej miejsca tymczasowo
-> (kompilator Rust + zależności), które można zwolnić po instalacji (`make clean`).
+> Disk requirements refer to the installed component. Building requires more space temporarily
+> (Rust compiler + dependencies), which can be freed after installation (`make clean`).
 
-> Zależności budowania (Rust, Node.js, biblioteki systemowe) są instalowane automatycznie
-> przez `make deps`. Na czystym Debianie trzeba najpierw zainstalować `make`:
+> Build dependencies (Rust, Node.js, system libraries) are installed automatically
+> by `make deps`. On a clean Debian, you need to install `make` first:
 > `sudo apt-get update && sudo apt-get install -y make`
 
 ---
 
-## 1. Szybka instalacja (Makefile)
+## 1. Quick installation (Makefile)
 
-Każdy komponent ma własny `Makefile` z pełną automatyzacją: zależności → budowanie → instalacja.
+Each component has its own `Makefile` with full automation: dependencies → build → install.
 
-### 1.1. Klonowanie repozytorium
+### 1.1. Clone the repository
 
 ```bash
 git clone <repo-url> tenodera
 cd tenodera
 ```
 
-### 1.2. Instalacja Panelu (jeden serwer)
+### 1.2. Install the Panel (one server)
 
 ```bash
 cd "Tenodera Panel"
 make all
 ```
 
-`make all` automatycznie:
-1. Instaluje zależności systemowe (`build-essential`, `pkg-config`, `libssl-dev`, `libpam0g-dev`, `sshpass`)
-2. Instaluje Rust (jeśli brak)
-3. Instaluje Node.js 22 (jeśli brak)
-4. Buduje backend (`tenodera-gateway`, `tenodera-bridge`) i frontend (React UI)
-5. Kopiuje binarki do `/usr/local/bin/`, UI do `/usr/share/tenodera/ui/`
-6. Instaluje usługę systemd z `TENODERA_BIND=0.0.0.0:9090`
-7. Uruchamia `tenodera-gateway`
+`make all` automatically:
+1. Installs system dependencies (`build-essential`, `pkg-config`, `libssl-dev`, `libpam0g-dev`, `sshpass`)
+2. Installs Rust (if missing)
+3. Installs Node.js 22 (if missing)
+4. Builds backend (`tenodera-gateway`, `tenodera-bridge`) and frontend (React UI)
+5. Copies binaries to `/usr/local/bin/`, UI to `/usr/share/tenodera/ui/`
+6. Installs systemd service with `TENODERA_BIND=0.0.0.0:9090`
+7. Starts `tenodera-gateway`
 
-Panel dostępny pod: `http://<adres-serwera>:9090`
+Panel available at: `http://<server-address>:9090`
 
-Logowanie przez PAM — użyj loginu i hasła systemowego.
+Login via PAM — use system username and password.
 
-Dostępne targety Makefile:
+Available Makefile targets:
 
-| Target | Opis |
-|--------|------|
-| `make all` | Pełna instalacja (deps + build + install) |
-| `make deps` | Tylko zależności (system + Rust + Node.js) |
-| `make build` | Tylko budowanie (backend + frontend) |
-| `make install` | Tylko instalacja (binarki + UI + systemd) |
-| `make uninstall` | Usunięcie (binarki + usługi; konfiguracja zostaje) |
-| `make clean` | Usunięcie artefaktów budowania |
+| Target | Description |
+|--------|-------------|
+| `make all` | Full installation (deps + build + install) |
+| `make deps` | Dependencies only (system + Rust + Node.js) |
+| `make build` | Build only (backend + frontend) |
+| `make install` | Install only (binaries + UI + systemd) |
+| `make uninstall` | Remove (binaries + services; config is kept) |
+| `make clean` | Remove build artifacts |
 
-### 1.3. Instalacja Agenta (każdy zarządzany host)
+### 1.3. Install the Agent (each managed host)
 
-> **Ważne:** Agent musi być zbudowany na systemie z tą samą (lub starszą) wersją glibc co docelowe hosty.
-> Jeśli budujesz na nowszym systemie (np. Arch/Fedora) i wdrażasz na starszy (np. Debian 12),
-> **zbuduj agenta bezpośrednio na docelowym hoście**.
+> **Important:** The agent must be built on a system with the same (or older) glibc version as the target hosts.
+> If you build on a newer system (e.g. Arch/Fedora) and deploy to an older one (e.g. Debian 12),
+> **build the agent directly on the target host**.
 
-Skopiuj katalog `Tenodera Agent` na docelowy host i uruchom:
+Copy the `Tenodera Agent` directory to the target host and run:
 
 ```bash
 cd "Tenodera Agent"
 make all
 ```
 
-`make all` automatycznie:
-1. Instaluje zależności systemowe (`build-essential`, `pkg-config`, `libssl-dev`)
-2. Instaluje Rust (jeśli brak)
-3. Buduje `tenodera-agent` w trybie release
-4. Kopiuje binarkę do `/usr/local/bin/`
-5. Tworzy domyślną konfigurację `/etc/tenodera/agent.toml` (localhost, bez API key)
-6. Instaluje i uruchamia usługę systemd
+`make all` automatically:
+1. Installs system dependencies (`build-essential`, `pkg-config`, `libssl-dev`)
+2. Installs Rust (if missing)
+3. Builds `tenodera-agent` in release mode
+4. Copies the binary to `/usr/local/bin/`
+5. Creates default configuration `/etc/tenodera/agent.toml` (localhost, no API key)
+6. Installs and starts the systemd service
 
-Weryfikacja:
+Verification:
 
 ```bash
 curl http://127.0.0.1:9091/health
-# Oczekiwany wynik: ok
+# Expected output: ok
 ```
 
-Dostępne targety Makefile:
+Available Makefile targets:
 
-| Target | Opis |
-|--------|------|
-| `make all` | Pełna instalacja (deps + build + install) |
-| `make deps` | Tylko zależności (system + Rust) |
-| `make build` | Tylko budowanie |
-| `make install` | Tylko instalacja (binarka + config + systemd) |
-| `make uninstall` | Usunięcie (binarka + usługa; konfiguracja zostaje) |
-| `make clean` | Usunięcie artefaktów budowania |
+| Target | Description |
+|--------|-------------|
+| `make all` | Full installation (deps + build + install) |
+| `make deps` | Dependencies only (system + Rust) |
+| `make build` | Build only |
+| `make install` | Install only (binary + config + systemd) |
+| `make uninstall` | Remove (binary + service; config is kept) |
+| `make clean` | Remove build artifacts |
 
 ---
 
-## 2. Instalacja ręczna (alternatywna)
+## 2. Manual installation (alternative)
 
-Jeśli wolisz zainstalować bez Makefile.
+If you prefer to install without the Makefile.
 
-### 2.1. Budowanie Panelu
+### 2.1. Building the Panel
 
 ```bash
 cd "Tenodera Panel"
@@ -169,15 +169,15 @@ npm run build
 cd ..
 ```
 
-Wynikowe binarki:
-- `target/release/tenodera-gateway` — serwer HTTP/WebSocket
-- `target/release/tenodera-bridge` — lokalny bridge (potrzebny na serwerze panelu)
-- `ui/dist/` — zbudowany frontend
+Resulting binaries:
+- `target/release/tenodera-gateway` — HTTP/WebSocket server
+- `target/release/tenodera-bridge` — local bridge (needed on the panel server)
+- `ui/dist/` — built frontend
 
-### 2.2. Instalacja Panelu
+### 2.2. Installing the Panel
 
 ```bash
-# Binarki
+# Binaries
 sudo install -m 755 target/release/tenodera-gateway /usr/local/bin/
 sudo install -m 755 target/release/tenodera-bridge  /usr/local/bin/
 
@@ -185,13 +185,13 @@ sudo install -m 755 target/release/tenodera-bridge  /usr/local/bin/
 sudo mkdir -p /usr/share/tenodera/ui
 sudo cp -r ui/dist/* /usr/share/tenodera/ui/
 
-# Katalogi konfiguracyjne
+# Configuration directories
 sudo mkdir -p /etc/tenodera/tls
 
-# Usługa systemd
+# systemd service
 sudo cp systemd/tenodera-gateway.service /etc/systemd/system/
 
-# Override — nasłuch na wszystkich interfejsach
+# Override — listen on all interfaces
 sudo mkdir -p /etc/systemd/system/tenodera-gateway.service.d
 printf '[Service]\nEnvironment=TENODERA_BIND=0.0.0.0:9090\n' \
   | sudo tee /etc/systemd/system/tenodera-gateway.service.d/bind.conf > /dev/null
@@ -200,28 +200,28 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now tenodera-gateway
 ```
 
-### 2.3. Budowanie Agenta
+### 2.3. Building the Agent
 
 ```bash
 cd "Tenodera Agent"
 cargo build --release
 ```
 
-Wynikowa binarka: `target/release/tenodera-agent`
+Resulting binary: `target/release/tenodera-agent`
 
-### 2.4. Instalacja Agenta
+### 2.4. Installing the Agent
 
 ```bash
 sudo install -m 755 target/release/tenodera-agent /usr/local/bin/
 
-# Domyślna konfiguracja (jeśli nie istnieje)
+# Default config (if not exists)
 sudo mkdir -p /etc/tenodera
 if [ ! -f /etc/tenodera/agent.toml ]; then
   printf 'bind = "127.0.0.1:9091"\napi_key = ""\nallow_unencrypted = true\n' \
     | sudo tee /etc/tenodera/agent.toml > /dev/null
 fi
 
-# Usługa systemd
+# systemd service
 cat << 'EOF' | sudo tee /etc/systemd/system/tenodera-agent.service
 [Unit]
 Description=Tenodera Agent
@@ -243,11 +243,11 @@ sudo systemctl enable --now tenodera-agent
 
 ---
 
-## 3. Konfiguracja Agenta
+## 3. Agent configuration
 
-### Tryb SSH (domyślny — agent na localhost)
+### SSH mode (default — agent on localhost)
 
-Domyślna konfiguracja tworzona przez `make install`:
+Default configuration created by `make install`:
 
 ```toml
 # /etc/tenodera/agent.toml
@@ -256,28 +256,28 @@ api_key = ""
 allow_unencrypted = true
 ```
 
-Agent nasłuchuje tylko na localhost — nie jest dostępny z sieci.
-Pusty `api_key` oznacza brak autoryzacji (bezpieczne, bo dostęp tylko przez SSH).
+The agent listens only on localhost — not accessible from the network.
+Empty `api_key` means no authorization (safe, since access is only through SSH).
 
-### Tryb Direct (agent dostępny z sieci)
+### Direct mode (network-accessible agent)
 
-Edytuj `/etc/tenodera/agent.toml`:
+Edit `/etc/tenodera/agent.toml`:
 
 ```toml
 bind = "0.0.0.0:9091"
-api_key = "<KLUCZ_API>"
+api_key = "<API_KEY>"
 allow_unencrypted = false
 tls_cert = "/etc/tenodera/cert.pem"
 tls_key = "/etc/tenodera/key.pem"
 ```
 
-Wygeneruj klucz API i certyfikat TLS:
+Generate an API key and TLS certificate:
 
 ```bash
-# Klucz API
+# API key
 openssl rand -hex 32
 
-# Certyfikat TLS (self-signed)
+# TLS certificate (self-signed)
 sudo openssl req -x509 -newkey rsa:4096 \
   -keyout /etc/tenodera/key.pem \
   -out /etc/tenodera/cert.pem \
@@ -287,25 +287,25 @@ sudo chmod 600 /etc/tenodera/key.pem
 sudo systemctl restart tenodera-agent
 ```
 
-> **Zapamiętaj klucz API** — ten sam musisz podać przy dodawaniu hosta w panelu.
+> **Remember the API key** — you need to provide the same one when adding the host in the panel.
 
 ---
 
-## 4. Konfiguracja TLS Panelu (produkcja)
+## 4. Panel TLS configuration (production)
 
-W produkcji panel powinien działać z TLS:
+In production, the panel should run with TLS:
 
 ```bash
-# Self-signed (do testów)
+# Self-signed (for testing)
 sudo openssl req -x509 -newkey rsa:4096 \
   -keyout /etc/tenodera/tls/key.pem \
   -out /etc/tenodera/tls/cert.pem \
   -days 365 -nodes -subj "/CN=tenodera-panel"
 
-# Let's Encrypt (produkcja) — użyj certbot, skopiuj cert i klucz do /etc/tenodera/tls/
+# Let's Encrypt (production) — use certbot, copy cert and key to /etc/tenodera/tls/
 ```
 
-Włącz TLS w usłudze systemd:
+Enable TLS in the systemd service:
 
 ```bash
 sudo systemctl edit tenodera-gateway
@@ -322,11 +322,11 @@ Environment=TENODERA_ALLOW_UNENCRYPTED=0
 sudo systemctl restart tenodera-gateway
 ```
 
-Panel dostępny pod: `https://<adres-serwera>:9090`
+Panel available at: `https://<server-address>:9090`
 
 ---
 
-## 5. Uruchomienie deweloperskie (bez instalacji)
+## 5. Development run (without installation)
 
 ```bash
 cd "Tenodera Panel"
@@ -336,41 +336,41 @@ RUST_LOG=info TENODERA_BRIDGE_BIN=target/release/tenodera-bridge \
   target/release/tenodera-gateway
 ```
 
-Panel dostępny pod: `http://127.0.0.1:9090`
+Panel available at: `http://127.0.0.1:9090`
 
 ---
 
-## 6. Dodanie hosta w panelu
+## 6. Adding a host in the panel
 
-Hosty dodaje się przez interfejs webowy panelu: **Hosts → Dodaj host**.
+Hosts are added through the panel web interface: **Hosts → Add host**.
 
-### Tryb SSH (domyślny)
+### SSH mode (default)
 
-| Pole | Wartość |
-|------|---------|
-| ID | unikalna nazwa (np. `web-1`) |
-| Address | IP lub hostname hosta |
+| Field | Value |
+|-------|-------|
+| ID | unique name (e.g. `web-1`) |
+| Address | host IP or hostname |
 | Transport | SSH Tunnel |
-| SSH User | użytkownik SSH (domyślnie: użytkownik sesji panelu) |
+| SSH User | SSH user (default: panel session user) |
 | SSH Port | `22` |
 | Agent Port | `9091` |
 
-> **Uwaga:** Hasło logowania użytkownika jest używane do uwierzytelniania SSH na zdalne hosty
-> (model Cockpit — `sshpass`). Zdalny host musi mieć włączone `PasswordAuthentication yes` w sshd.
-> Panel otwiera tunel SSH w imieniu zalogowanego użytkownika.
+> **Note:** The user's login password is used for SSH authentication to remote hosts
+> (Cockpit model — `sshpass`). The remote host must have `PasswordAuthentication yes` enabled in sshd.
+> The panel opens an SSH tunnel on behalf of the logged-in user.
 
-### Tryb Direct
+### Direct mode
 
-| Pole | Wartość |
-|------|---------|
-| ID | unikalna nazwa |
-| Address | IP lub hostname hosta |
+| Field | Value |
+|-------|-------|
+| ID | unique name |
+| Address | host IP or hostname |
 | Transport | Direct (API key) |
 | Agent Port | `9091` |
-| API Key | klucz z `agent.toml` hosta |
-| TLS | zaznacz jeśli agent ma certyfikat |
+| API Key | key from the host's `agent.toml` |
+| TLS | check if agent has a certificate |
 
-Hosty można też dodawać ręcznie w pliku `~/.config/tenodera/hosts.json`:
+Hosts can also be added manually in the `~/.config/tenodera/hosts.json` file:
 
 ```json
 {
@@ -395,42 +395,42 @@ Hosty można też dodawać ręcznie w pliku `~/.config/tenodera/hosts.json`:
 }
 ```
 
-| Pole | Opis | Domyślnie |
-|------|------|-----------|
-| `id` | Unikalna nazwa hosta | (wymagane) |
-| `address` | IP lub hostname | (wymagane) |
-| `transport` | `"ssh"` (tunel SSH) lub `"agent"` (bezpośrednio) | `"ssh"` |
-| `user` | Użytkownik SSH | (użytkownik sesji) |
-| `ssh_port` | Port SSH | `22` |
-| `agent_port` | Port agenta na hoście | `9091` |
-| `api_key` | Klucz API (tylko tryb Direct) | `""` |
-| `agent_tls` | TLS agenta (tylko tryb Direct) | `false` |
+| Field | Description | Default |
+|-------|-------------|---------|
+| `id` | Unique host name | (required) |
+| `address` | IP or hostname | (required) |
+| `transport` | `"ssh"` (SSH tunnel) or `"agent"` (direct) | `"ssh"` |
+| `user` | SSH user | (session user) |
+| `ssh_port` | SSH port | `22` |
+| `agent_port` | Agent port on host | `9091` |
+| `api_key` | API key (Direct mode only) | `""` |
+| `agent_tls` | Agent TLS (Direct mode only) | `false` |
 
 ---
 
 ## 7. Firewall
 
-### Na serwerze panelu
+### On the panel server
 
 ```bash
-# Port panelu (UI + API)
-sudo ufw allow 9090/tcp    # lub: firewall-cmd --permanent --add-port=9090/tcp
+# Panel port (UI + API)
+sudo ufw allow 9090/tcp    # or: firewall-cmd --permanent --add-port=9090/tcp
 ```
 
-### Na hostach z agentem
+### On agent hosts
 
-**Tryb SSH** — wystarczy otwarty port SSH (22). Agent na localhost — port 9091 **nie** musi być otwarty.
+**SSH mode** — only SSH port (22) needs to be open. Agent is on localhost — port 9091 does **not** need to be open.
 
-**Tryb Direct** — port 9091 musi być otwarty:
+**Direct mode** — port 9091 must be open:
 ```bash
-sudo ufw allow 9091/tcp    # lub: firewall-cmd --permanent --add-port=9091/tcp
+sudo ufw allow 9091/tcp    # or: firewall-cmd --permanent --add-port=9091/tcp
 ```
 
 ---
 
-## 8. Masowa instalacja agenta (tryb SSH)
+## 8. Mass agent deployment (SSH mode)
 
-Skrypt do szybkiego wdrożenia na wielu hostach za pomocą Makefile:
+Script for quick deployment to multiple hosts using the Makefile:
 
 ```bash
 #!/bin/bash
@@ -441,74 +441,74 @@ AGENT_SRC="Tenodera Agent"
 for HOST in $HOSTS; do
     echo "==> $HOST"
 
-    # Skopiuj źródła + Makefile na host
+    # Copy sources + Makefile to host
     ssh root@"$HOST" "mkdir -p /tmp/tenodera-agent-src"
     scp -r "$AGENT_SRC/src" "$AGENT_SRC/Cargo.toml" "$AGENT_SRC/Makefile" \
         root@"$HOST":/tmp/tenodera-agent-src/
 
-    # Zainstaluj (deps + build + install) jednym poleceniem
+    # Install (deps + build + install) in one command
     ssh root@"$HOST" "cd /tmp/tenodera-agent-src && make all && rm -rf /tmp/tenodera-agent-src"
 
-    echo "    OK — dodaj host w panelu: id=$HOST, address=$HOST, transport=ssh"
+    echo "    OK — add host in panel: id=$HOST, address=$HOST, transport=ssh"
 done
 ```
 
 ---
 
-## 9. Zmienne środowiskowe
+## 9. Environment variables
 
 ### Panel (gateway)
 
-| Zmienna | Opis | Domyślnie |
-|---------|------|-----------|
-| `TENODERA_BIND` | Adres nasłuchu | `127.0.0.1:9090` |
-| `TENODERA_TLS_CERT` | Ścieżka do certyfikatu PEM | (brak) |
-| `TENODERA_TLS_KEY` | Ścieżka do klucza prywatnego PEM | (brak) |
-| `TENODERA_ALLOW_UNENCRYPTED` | `1`/`true` — pozwól bez TLS | `true` (dev) |
-| `TENODERA_BRIDGE_BIN` | Ścieżka do binarki bridge | `tenodera-bridge` |
-| `TENODERA_UI_DIR` | Katalog zbudowanego UI | `ui/dist` |
-| `RUST_LOG` | Poziom logowania | `info` |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TENODERA_BIND` | Listen address | `127.0.0.1:9090` |
+| `TENODERA_TLS_CERT` | Path to PEM certificate | (none) |
+| `TENODERA_TLS_KEY` | Path to PEM private key | (none) |
+| `TENODERA_ALLOW_UNENCRYPTED` | `1`/`true` — allow without TLS | `true` (dev) |
+| `TENODERA_BRIDGE_BIN` | Path to bridge binary | `tenodera-bridge` |
+| `TENODERA_UI_DIR` | Built UI directory | `ui/dist` |
+| `RUST_LOG` | Log level | `info` |
 
 ### Agent
 
-| Zmienna | Opis | Domyślnie |
-|---------|------|-----------|
-| `TENODERA_AGENT_CONFIG` | Ścieżka do pliku konfiguracyjnego | `/etc/tenodera/agent.toml` |
-| `TENODERA_AGENT_BIND` | Adres nasłuchu (nadpisuje config) | `127.0.0.1:9091` |
-| `TENODERA_AGENT_API_KEY` | Klucz API (nadpisuje config) | `""` |
-| `TENODERA_AGENT_TLS_CERT` | Certyfikat TLS (nadpisuje config) | (brak) |
-| `TENODERA_AGENT_TLS_KEY` | Klucz TLS (nadpisuje config) | (brak) |
-| `TENODERA_AGENT_ALLOW_UNENCRYPTED` | `1`/`true` (nadpisuje config) | `true` |
-| `RUST_LOG` | Poziom logowania | `info` |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TENODERA_AGENT_CONFIG` | Path to config file | `/etc/tenodera/agent.toml` |
+| `TENODERA_AGENT_BIND` | Listen address (overrides config) | `127.0.0.1:9091` |
+| `TENODERA_AGENT_API_KEY` | API key (overrides config) | `""` |
+| `TENODERA_AGENT_TLS_CERT` | TLS certificate (overrides config) | (none) |
+| `TENODERA_AGENT_TLS_KEY` | TLS key (overrides config) | (none) |
+| `TENODERA_AGENT_ALLOW_UNENCRYPTED` | `1`/`true` (overrides config) | `true` |
+| `RUST_LOG` | Log level | `info` |
 
 ---
 
-## 10. Diagnostyka
+## 10. Diagnostics
 
 ```bash
-# Logi panelu
+# Panel logs
 journalctl -u tenodera-gateway -f
 
-# Logi agenta (na zdalnym hoście)
+# Agent logs (on the remote host)
 journalctl -u tenodera-agent -f
 
-# Health check agenta (na hoście agenta)
+# Agent health check (on the agent host)
 curl http://127.0.0.1:9091/health
 
-# Test tunelu SSH (z serwera panelu)
+# SSH tunnel test (from the panel server)
 ssh -N -L 19091:127.0.0.1:9091 user@HOST &
 curl http://127.0.0.1:19091/health
 kill %1
 
-# Test bezpośredni (tryb Direct, z serwera panelu)
+# Direct test (Direct mode, from the panel server)
 curl -k -H "Authorization: Bearer <API_KEY>" https://HOST:9091/health
 ```
 
 ---
 
-## 11. Aktualizacja
+## 11. Updating
 
-### Agent (z Makefile)
+### Agent (with Makefile)
 
 ```bash
 cd "Tenodera Agent"
@@ -517,7 +517,7 @@ make build
 sudo make install
 ```
 
-### Agent (ręcznie)
+### Agent (manual)
 
 ```bash
 cd "Tenodera Agent"
@@ -526,7 +526,7 @@ sudo cp target/release/tenodera-agent /usr/local/bin/
 sudo systemctl restart tenodera-agent
 ```
 
-### Panel (z Makefile)
+### Panel (with Makefile)
 
 ```bash
 cd "Tenodera Panel"
@@ -535,7 +535,7 @@ make build
 sudo make install
 ```
 
-### Panel (ręcznie)
+### Panel (manual)
 
 ```bash
 cd "Tenodera Panel"
@@ -551,7 +551,7 @@ sudo systemctl restart tenodera-gateway
 
 ---
 
-## 12. Odinstalowanie
+## 12. Uninstalling
 
 ### Agent
 
@@ -567,7 +567,7 @@ cd "Tenodera Panel"
 make uninstall
 ```
 
-Konfiguracja w `/etc/tenodera/` nie jest usuwana automatycznie. Aby usunąć całkowicie:
+Configuration in `/etc/tenodera/` is not removed automatically. To remove completely:
 
 ```bash
 sudo rm -rf /etc/tenodera

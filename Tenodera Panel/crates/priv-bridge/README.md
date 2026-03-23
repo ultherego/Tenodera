@@ -1,18 +1,18 @@
 # tenodera-priv-bridge
 
-Uprzywilejowany helper działający jako root z restrykcyjnym allowlistem operacji. Zaprojektowany do bezpiecznej eskalacji uprawnień dla ograniczonego zbioru komend systemowych.
+Privileged helper running as root with a restrictive operation allowlist. Designed for secure privilege escalation for a limited set of system commands.
 
-## Rola w architekturze
+## Role in architecture
 
-`tenodera-priv-bridge` jest opcjonalnym komponentem uruchamianym jako root (przez systemd socket activation lub bezpośrednio). Przyjmuje wiadomości JSON ze stdin i odpowiada na stdout — identycznie jak zwykły bridge — ale z uprawnieniami root. Tylko ściśle zdefiniowane operacje są dopuszczone (allowlist).
+`tenodera-priv-bridge` is an optional component running as root (via systemd socket activation or directly). It accepts JSON messages from stdin and responds on stdout — identically to the regular bridge — but with root privileges. Only strictly defined operations are permitted (allowlist).
 
 ```
-Gateway → stdin/stdout → priv-bridge (root)   ← tylko dozwolone operacje
+Gateway → stdin/stdout → priv-bridge (root)   ← only allowed operations
 ```
 
-## Bezpieczeństwo — model allowlist
+## Security — allowlist model
 
-Priv-bridge implementuje **whitelistę payload types** jako główny mechanizm bezpieczeństwa:
+Priv-bridge implements a **payload type whitelist** as the primary security mechanism:
 
 ```rust
 const ALLOWED_PAYLOADS: &[&str] = &[
@@ -21,61 +21,61 @@ const ALLOWED_PAYLOADS: &[&str] = &[
 ];
 ```
 
-Każda wiadomość `Open` jest walidowana:
-1. Sprawdzenie czy `payload_type` jest na liście `ALLOWED_PAYLOADS`
-2. Jeśli nie → natychmiastowe odrzucenie z `Close` + komunikatem błędu
-3. Jeśli tak → dispatch do odpowiedniego handlera
+Every `Open` message is validated:
+1. Check if `payload_type` is on the `ALLOWED_PAYLOADS` list
+2. If not → immediate rejection with `Close` + error message
+3. If yes → dispatch to the appropriate handler
 
-## Implementacja (`main.rs`)
+## Implementation (`main.rs`)
 
-### Pętla główna
+### Main loop
 
-Synchroniczna pętla stdin/stdout (nie async):
+Synchronous stdin/stdout loop (not async):
 
 ```
 loop {
-    1. Czytaj linię ze stdin
-    2. Deserializuj JSON → Message
-    3. Match na typ wiadomości:
-       - Open → sprawdź allowlist → dispatch lub odrzuć
-       - Data → odrzuć (brak aktywnych kanałów bidirectional)
-       - Close → ignoruj
-       - Ping → zwróć Pong
-    4. Serializuj odpowiedzi → stdout
+    1. Read a line from stdin
+    2. Deserialize JSON → Message
+    3. Match on message type:
+       - Open → check allowlist → dispatch or reject
+       - Data → reject (no active bidirectional channels)
+       - Close → ignore
+       - Ping → return Pong
+    4. Serialize responses → stdout
 }
 ```
 
-### Dispatch operacji
+### Operation dispatch
 
-Aktualnie stub — po walidacji allowlist zwraca:
-- `Ready` (potwierdzenie otwarcia kanału)
-- `Close` (natychmiastowe zamknięcie)
+Currently a stub — after allowlist validation returns:
+- `Ready` (channel open confirmation)
+- `Close` (immediate close)
 
-Docelowo handlery powinny implementować właściwą logikę (np. `systemctl` bezpośrednio jako root bez sudo).
+Target handlers should implement actual logic (e.g. `systemctl` directly as root without sudo).
 
-### Odrzucenie niedozwolonej operacji
+### Rejection of disallowed operations
 
 ```json
-// Wejście:
+// Input:
 {"type": "open", "channel": "ch1", "payload": "terminal.pty"}
 
-// Odpowiedź:
+// Response:
 {"type": "close", "channel": "ch1", "problem": "not-authorized", "message": "Payload 'terminal.pty' is not allowed in privileged bridge"}
 ```
 
-## Status implementacji
+## Implementation status
 
 | Element | Status |
 |---------|--------|
-| Pętla stdin/stdout | ✅ Zaimplementowana |
-| Allowlist walidacja | ✅ Zaimplementowana |
-| Ping/Pong | ✅ Zaimplementowane |
+| stdin/stdout loop | ✅ Implemented |
+| Allowlist validation | ✅ Implemented |
+| Ping/Pong | ✅ Implemented |
 | `systemd.unit.action` handler | ⚠️ Stub (Ready+Close) |
 | `package.updates` handler | ⚠️ Stub (Ready+Close) |
 
-## Konfiguracja systemd
+## systemd configuration
 
-Plik `systemd/tenodera-priv-bridge.service`:
+File `systemd/tenodera-priv-bridge.service`:
 
 ```ini
 [Service]
@@ -85,7 +85,7 @@ StandardInput=socket
 User=root
 
 # Hardening
-NoNewPrivileges=false          # Wymaga eskalacji
+NoNewPrivileges=false          # Requires escalation
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=yes
@@ -95,9 +95,9 @@ ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 ```
 
-## Zależności
+## Dependencies
 
-- `tenodera-protocol` — współdzielone typy wiadomości
+- `tenodera-protocol` — shared message types
 - `tokio` — runtime (choć pętla główna jest synchroniczna)
 - `serde` + `serde_json` — JSON
 - `nix 0.29` — operacje systemowe

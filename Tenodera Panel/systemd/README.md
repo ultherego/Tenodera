@@ -1,10 +1,10 @@
-# Pliki systemd
+# systemd files
 
-Usługi systemd do uruchamiania komponentów Tenodera jako demonów systemu.
+systemd service files for running Tenodera components as system daemons.
 
 ## tenodera-gateway.service
 
-Główna usługa — serwer HTTP/WebSocket na porcie 9090. Spawnuje `tenodera-bridge` per sesja.
+Main service — HTTP/WebSocket server on port 9090. Spawns `tenodera-bridge` per session.
 
 ```ini
 [Unit]
@@ -19,7 +19,7 @@ ExecStart=/usr/local/bin/tenodera-gateway
 Restart=on-failure
 RestartSec=5
 
-# Zmienne środowiskowe
+# Environment variables
 Environment=RUST_LOG=tenodera_gateway=info
 Environment=TENODERA_BRIDGE_BIN=/usr/local/bin/tenodera-bridge
 Environment=TENODERA_UI_DIR=/usr/share/tenodera/ui
@@ -28,7 +28,7 @@ Environment=TENODERA_UI_DIR=/usr/share/tenodera/ui
 # Environment=TENODERA_TLS_KEY=/etc/tenodera/tls/key.pem
 # Environment=TENODERA_ALLOW_UNENCRYPTED=0
 
-# Hardening bezpieczeństwa
+# Security hardening
 ProtectSystem=full
 PrivateTmp=yes
 ProtectKernelTunables=yes
@@ -39,19 +39,19 @@ LockPersonality=yes
 WantedBy=multi-user.target
 ```
 
-### Hardening — wyjaśnienie dyrektyw
+### Hardening — directive explanations
 
-| Dyrektywa | Opis |
-|-----------|------|
-| `ProtectSystem=full` | /usr, /boot, /efi read-only (ale /etc zapisywalny — potrzebny dla hosts.json) |
-| `PrivateTmp=yes` | Izolowany /tmp |
-| `ProtectKernelTunables=yes` | Blokada /proc/sys, /sys zapisu |
-| `ProtectControlGroups=yes` | Blokada zapisu do /sys/fs/cgroup |
-| `LockPersonality=yes` | Blokada zmiany domeny egzekucji |
+| Directive | Description |
+|-----------|-------------|
+| `ProtectSystem=full` | /usr, /boot, /efi read-only (but /etc writable — needed for hosts.json) |
+| `PrivateTmp=yes` | Isolated /tmp |
+| `ProtectKernelTunables=yes` | Block /proc/sys, /sys writes |
+| `ProtectControlGroups=yes` | Block writes to /sys/fs/cgroup |
+| `LockPersonality=yes` | Block execution domain changes |
 
 ## tenodera-priv-bridge.service
 
-Uprzywilejowany helper działający jako root z socket activation:
+Privileged helper running as root with socket activation:
 
 ```ini
 [Unit]
@@ -63,8 +63,8 @@ ExecStart=/usr/local/bin/tenodera-priv-bridge
 StandardInput=socket
 User=root
 
-# Hardening (luźniejszy — wymaga root)
-NoNewPrivileges=false          # Root musi eskalować
+# Hardening (relaxed — requires root)
+NoNewPrivileges=false          # Root must escalate
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=yes
@@ -74,57 +74,57 @@ ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 ```
 
-## Instalacja
+## Installation
 
 ```bash
-# Kopiowanie binariów
+# Copy binaries
 sudo cp target/release/tenodera-gateway /usr/local/bin/
 sudo cp target/release/tenodera-bridge /usr/local/bin/
 sudo cp target/release/tenodera-priv-bridge /usr/local/bin/
 
-# Kopiowanie plików usług
+# Copy service files
 sudo cp systemd/*.service /etc/systemd/system/
 
-# Instalacja UI
+# Install UI
 sudo mkdir -p /usr/share/tenodera/ui
 sudo cp -r ui/dist/* /usr/share/tenodera/ui/
 
-# Uruchomienie
+# Start
 sudo systemctl daemon-reload
 sudo systemctl enable --now tenodera-gateway
 ```
 
-## Konfiguracja
+## Configuration
 
-Wszystkie ustawienia przez zmienne środowiskowe w pliku usługi:
+All settings via environment variables in the service file:
 
-| Zmienna | Domyślna | Opis |
-|---------|----------|------|
-| `TENODERA_BIND_ADDR` | `127.0.0.1` | Adres nasłuchiwania |
-| `TENODERA_BIND_PORT` | `9090` | Port nasłuchiwania |
-| `TENODERA_BRIDGE_BIN` | `tenodera-bridge` | Ścieżka do binary bridge |
-| `TENODERA_UI_DIR` | `ui/dist` | Ścieżka do zbudowanego frontendu |
-| `TENODERA_TLS_CERT` | (brak) | Ścieżka do certyfikatu PEM |
-| `TENODERA_TLS_KEY` | (brak) | Ścieżka do klucza prywatnego PEM |
-| `TENODERA_ALLOW_UNENCRYPTED` | `true` | Pozwól na HTTP bez TLS |
-| `TENODERA_IDLE_TIMEOUT` | `900` | Timeout sesji (sekundy) |
-| `TENODERA_MAX_STARTUPS` | `20` | Maks. równoczesnych połączeń |
-| `RUST_LOG` | (brak) | Filtr logów (np. `info`, `tenodera_gateway=debug`) |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TENODERA_BIND_ADDR` | `127.0.0.1` | Listen address |
+| `TENODERA_BIND_PORT` | `9090` | Listen port |
+| `TENODERA_BRIDGE_BIN` | `tenodera-bridge` | Path to bridge binary |
+| `TENODERA_UI_DIR` | `ui/dist` | Path to built frontend |
+| `TENODERA_TLS_CERT` | (none) | Path to PEM certificate |
+| `TENODERA_TLS_KEY` | (none) | Path to PEM private key |
+| `TENODERA_ALLOW_UNENCRYPTED` | `true` | Allow HTTP without TLS |
+| `TENODERA_IDLE_TIMEOUT` | `900` | Session timeout (seconds) |
+| `TENODERA_MAX_STARTUPS` | `20` | Max concurrent connections |
+| `RUST_LOG` | (none) | Log filter (e.g. `info`, `tenodera_gateway=debug`) |
 
-### Nadpisywanie zmiennych
+### Overriding variables
 
 ```bash
 sudo systemctl edit tenodera-gateway
-# Dodaj:
+# Add:
 # [Service]
 # Environment=TENODERA_TLS_CERT=/etc/tenodera/cert.pem
 # Environment=TENODERA_TLS_KEY=/etc/tenodera/key.pem
 # Environment=TENODERA_ALLOW_UNENCRYPTED=false
 ```
 
-## Logi
+## Logs
 
 ```bash
-journalctl -u tenodera-gateway -f     # live logi gateway
-journalctl -u tenodera-priv-bridge -f # live logi priv-bridge
+journalctl -u tenodera-gateway -f     # live gateway logs
+journalctl -u tenodera-priv-bridge -f # live priv-bridge logs
 ```

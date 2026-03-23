@@ -1,33 +1,33 @@
 # tenodera-bridge
 
-Per-sesyjny router wiadomości kanałowych z pluginowymi handlerami systemowymi.
+Per-session channel message router with pluggable system handlers.
 
-## Rola w architekturze
+## Role in architecture
 
-`tenodera-bridge` to główny silnik backendu Tenodera. Dla każdej zalogowanej sesji użytkownika, gateway spawnuje *osobny* proces `tenodera-bridge` działający z uprawnieniami tego użytkownika. Bridge komunikuje się z gateway przez stdin/stdout (JSON lines), a gateway mostkuje je do/z WebSocketa w przeglądarce.
+`tenodera-bridge` is the main backend engine of Tenodera. For each logged-in user session, the gateway spawns a *separate* `tenodera-bridge` process running with that user's privileges. The bridge communicates with the gateway via stdin/stdout (JSON lines), and the gateway bridges them to/from the WebSocket in the browser.
 
 ```
-Przeglądarka ←→ WebSocket ←→ Gateway ←→ stdin/stdout ←→ Bridge (per user)
+Browser ←→ WebSocket ←→ Gateway ←→ stdin/stdout ←→ Bridge (per user)
 ```
 
-## Architektura wewnętrzna
+## Internal architecture
 
-### `main.rs` — Pętla główna
+### `main.rs` — Main loop
 
-1. Inicjalizacja loggera (`tracing` → stderr)
-2. Utworzenie kanału `mpsc` (256 elementów) na wiadomości wychodzące
-3. Rejestracja domyślnych handlerów w `Router`
-4. Spawn zadania pisarza stdout — odbiera wiadomości z kanału i serializuje je jako JSON lines
-5. Pętla główna — czyta stdin linia po linii, deserializuje `Message`, przekazuje do `Router::handle()`, wysyła odpowiedzi
+1. Logger initialization (`tracing` → stderr)
+2. Create `mpsc` channel (256 elements) for outgoing messages
+3. Register default handlers in `Router`
+4. Spawn stdout writer task — receives messages from channel and serializes them as JSON lines
+5. Main loop — reads stdin line by line, deserializes `Message`, passes to `Router::handle()`, sends responses
 
-### `handler.rs` — Trait `ChannelHandler`
+### `handler.rs` — `ChannelHandler` trait
 
-Definiuje interfejs dla wszystkich handlerów:
+Defines the interface for all handlers:
 
 ```rust
 pub trait ChannelHandler: Send + Sync {
-    fn payload_type(&self) -> &str;        // np. "system.info"
-    fn is_streaming(&self) -> bool;         // domyślnie false
+    fn payload_type(&self) -> &str;        // e.g. "system.info"
+    fn is_streaming(&self) -> bool;         // default false
     async fn open(&self, channel: &str, options: &ChannelOpenOptions) -> Vec<Message>;
     async fn stream(&self, channel: &str, options: &ChannelOpenOptions,
                     tx: mpsc::Sender<Message>, shutdown: watch::Receiver<bool>);
@@ -35,111 +35,111 @@ pub trait ChannelHandler: Send + Sync {
 }
 ```
 
-**Typy handlerów:**
-- **One-shot** — `open()` zwraca Ready + Data + Close od razu
-- **Streaming** — `is_streaming()=true`, `stream()` wysyła dane przez `tx` do momentu `shutdown`
-- **Bidirectional** — `open()` zwraca Ready (bez Close), a po otwarciu przyjmuje `data()` z komendami
+**Handler types:**
+- **One-shot** — `open()` returns Ready + Data + Close immediately
+- **Streaming** — `is_streaming()=true`, `stream()` sends data via `tx` until `shutdown`
+- **Bidirectional** — `open()` returns Ready (without Close), then accepts `data()` with commands
 
-### `router.rs` — Router wiadomości
+### `router.rs` — Message router
 
-`Router` zarządza:
-- `handlers: HashMap<String, Arc<dyn ChannelHandler>>` — rejestr handlerów po payload type
-- `active_channels: HashMap<String, ActiveChannel>` — aktywne kanały streamingowe (z `shutdown_tx`)
-- `channel_handlers: HashMap<String, Arc<dyn ChannelHandler>>` — mapowanie kanału → handler (one-shot/bidirectional)
-- `out_tx: mpsc::Sender<Message>` — kanał wyjściowy do stdout
+`Router` manages:
+- `handlers: HashMap<String, Arc<dyn ChannelHandler>>` — handler registry by payload type
+- `active_channels: HashMap<String, ActiveChannel>` — active streaming channels (with `shutdown_tx`)
+- `channel_handlers: HashMap<String, Arc<dyn ChannelHandler>>` — channel → handler mapping (one-shot/bidirectional)
+- `out_tx: mpsc::Sender<Message>` — output channel to stdout
 
-Logika routingu w `handle()`:
-- **Open** → szuka handlera po `options.payload`
-  - Streaming: spawnuje tokio task, wysyła Ready, uruchamia `stream()`
-  - One-shot/Bidirectional: woła `open()`, zwraca odpowiedzi
-- **Data** → szuka handlera po channel ID (najpierw active_channels, potem channel_handlers), woła `data()`
-- **Close** → zamyka kanał streamingowy (wysyła shutdown), usuwa tracking
-- **Ping** → zwraca Pong
+Routing logic in `handle()`:
+- **Open** → looks up handler by `options.payload`
+  - Streaming: spawns tokio task, sends Ready, runs `stream()`
+  - One-shot/Bidirectional: calls `open()`, returns responses
+- **Data** → looks up handler by channel ID (first active_channels, then channel_handlers), calls `data()`
+- **Close** → closes streaming channel (sends shutdown), removes tracking
+- **Ping** → returns Pong
 
-## Handlery (17 zarejestrowanych)
+## Handlers (17 registered)
 
-### One-shot handlery
+### One-shot handlers
 
-| Handler | Payload type | Źródło danych | Opis |
-|---------|-------------|---------------|------|
-| `SystemInfoHandler` | `system.info` | `/proc/uptime`, `/etc/os-release`, `gethostname()` | Hostname, OS, uptime, czas startu |
-| `HardwareInfoHandler` | `hardware.info` | `/proc/cpuinfo`, `uname()`, `/sys/class/hwmon/` | Model CPU, rdzenie/wątki, MHz, architektura, kernel, sensory temperatury |
-| `TopProcessesHandler` | `top.processes` | `ps --sort=-%cpu` | Top 15 procesów (PID, user, CPU%, MEM%, RSS, command) |
-| `DiskUsageHandler` | `disk.usage` | `/proc/mounts` + `statvfs()` | Użycie partycji (device, mount, fstype, total/used/free/avail, %) |
-| `NetworkStatsHandler` | `network.stats` | `/proc/net/dev`, `/sys/class/net/`, `ip -j addr show` | Interfejsy sieciowe z RX/TX, MAC, speed, state, IPv4/IPv6 |
-| `JournalQueryHandler` | `journal.query` | `journalctl --output=json` | Wpisy journald z filtrami (unit, priority, lines) |
-| `FileListHandler` | `file.list` | `read_dir()` / `sudo ls -laH` | Listing katalogu z typem, rozmiarem. Sudo fallback dla ograniczonych katalogów. Walidacja ścieżek przez `canonicalize()` |
-| `SuperuserVerifyHandler` | `superuser.verify` | `unix_chkpwd` | Weryfikacja hasła użytkownika. Zwraca `{ ok: true/false }` |
+| Handler | Payload type | Data source | Description |
+|---------|-------------|-------------|-------------|
+| `SystemInfoHandler` | `system.info` | `/proc/uptime`, `/etc/os-release`, `gethostname()` | Hostname, OS, uptime, boot time |
+| `HardwareInfoHandler` | `hardware.info` | `/proc/cpuinfo`, `uname()`, `/sys/class/hwmon/` | CPU model, cores/threads, MHz, arch, kernel, temperature sensors |
+| `TopProcessesHandler` | `top.processes` | `ps --sort=-%cpu` | Top 15 processes (PID, user, CPU%, MEM%, RSS, command) |
+| `DiskUsageHandler` | `disk.usage` | `/proc/mounts` + `statvfs()` | Partition usage (device, mount, fstype, total/used/free/avail, %) |
+| `NetworkStatsHandler` | `network.stats` | `/proc/net/dev`, `/sys/class/net/`, `ip -j addr show` | Network interfaces with RX/TX, MAC, speed, state, IPv4/IPv6 |
+| `JournalQueryHandler` | `journal.query` | `journalctl --output=json` | journald entries with filters (unit, priority, lines) |
+| `FileListHandler` | `file.list` | `read_dir()` / `sudo ls -laH` | Directory listing with type, size. Sudo fallback for restricted directories. Path validation via `canonicalize()` |
+| `SuperuserVerifyHandler` | `superuser.verify` | `unix_chkpwd` | User password verification. Returns `{ ok: true/false }` |
 
-### Streaming handlery
+### Streaming handlers
 
-| Handler | Payload type | Interwał | Źródło danych | Opis |
-|---------|-------------|----------|---------------|------|
-| `MetricsStreamHandler` | `metrics.stream` | Konfigurowalny (domyślnie 1s) | `/proc/stat`, `/proc/meminfo`, `/proc/loadavg`, `/proc/diskstats`, `/proc/net/dev` | CPU (zagregowany + per-core), pamięć, swap, load avg, disk I/O, net I/O |
-| `StorageStreamHandler` | `storage.stream` | Konfigurowalny (domyślnie 2s) | `/proc/diskstats` + `lsblk -J` + `statvfs()` | Szybkości I/O dyskowego + drzewo urządzeń blokowych z użyciem FS |
-| `NetworkStreamHandler` | `networking.stream` | Konfigurowalny (domyślnie 1s) | `/proc/net/dev` | Szybkości TX/RX per interfejs (bytes/sec) |
-| `TerminalPtyHandler` | `terminal.pty` | — (event-driven) | `openpty()` + `fork()` + `execvp()` | Interaktywny terminal PTY. Dwukierunkowy I/O + resize (TIOCSWINSZ) |
+| Handler | Payload type | Interval | Data source | Description |
+|---------|-------------|----------|-------------|-------------|
+| `MetricsStreamHandler` | `metrics.stream` | Configurable (default 1s) | `/proc/stat`, `/proc/meminfo`, `/proc/loadavg`, `/proc/diskstats`, `/proc/net/dev` | CPU (aggregated + per-core), memory, swap, load avg, disk I/O, net I/O |
+| `StorageStreamHandler` | `storage.stream` | Configurable (default 2s) | `/proc/diskstats` + `lsblk -J` + `statvfs()` | Disk I/O rates + block device tree with FS usage |
+| `NetworkStreamHandler` | `networking.stream` | Configurable (default 1s) | `/proc/net/dev` | TX/RX rates per interface (bytes/sec) |
+| `TerminalPtyHandler` | `terminal.pty` | — (event-driven) | `openpty()` + `fork()` + `execvp()` | Interactive PTY terminal. Bidirectional I/O + resize (TIOCSWINSZ) |
 
-### Bidirectional handlery (open + data)
+### Bidirectional handlers (open + data)
 
-| Handler | Payload type | Akcje | Opis |
-|---------|-------------|-------|------|
-| `SystemdManageHandler` | `systemd.manage` | `start`, `stop`, `restart`, `reload`, `enable`, `disable`, `status`, `list` | Zarządzanie usługami systemd. Weryfikuje hasło przez `unix_chkpwd`, wykonuje `systemctl` bezpośrednio (bridge działa jako root) |
-| `ContainersHandler` | `container.manage` | `list_containers`, `list_images`, `inspect`, `start`, `stop`, `restart`, `remove`, `remove_image`, `pull`, `create`, `logs`, `service_status`, `service_start/stop/restart` | Docker/Podman. Auto-detekcja runtime (podman → docker) |
-| `NetworkManageHandler` | `networking.manage` | `list_interfaces`, `firewall_status/rules/enable/disable/add_rule/remove_rule`, `add_bridge`, `add_vlan`, `remove_interface`, `iface_up/down`, `vpn_list/connect/disconnect`, `network_logs` | Zarządzanie siecią. Multi-backend firewall (ufw/firewalld/nftables/iptables) |
-| `PackagesHandler` | `packages.manage` | `detect`, `list_installed`, `search`, `package_info`, `install`, `remove`, `check_updates`, `update_system`, `list_repos`, `add_repo`, `remove_repo`, `refresh_repos` | Pakiety systemowe. Auto-detekcja (pacman/apt/dnf) |
-| `HostsManageHandler` | `hosts.manage` | `list`, `add`, `remove` | CRUD hostów zdalnych. Persistence w `~/.config/tenodera/hosts.json` |
+| Handler | Payload type | Actions | Description |
+|---------|-------------|---------|-------------|
+| `SystemdManageHandler` | `systemd.manage` | `start`, `stop`, `restart`, `reload`, `enable`, `disable`, `status`, `list` | systemd service management. Verifies password via `unix_chkpwd`, executes `systemctl` directly (bridge runs as root) |
+| `ContainersHandler` | `container.manage` | `list_containers`, `list_images`, `inspect`, `start`, `stop`, `restart`, `remove`, `remove_image`, `pull`, `create`, `logs`, `service_status`, `service_start/stop/restart` | Docker/Podman. Auto-detection of runtime (podman → docker) |
+| `NetworkManageHandler` | `networking.manage` | `list_interfaces`, `firewall_status/rules/enable/disable/add_rule/remove_rule`, `add_bridge`, `add_vlan`, `remove_interface`, `iface_up/down`, `vpn_list/connect/disconnect`, `network_logs` | Network management. Multi-backend firewall (ufw/firewalld/nftables/iptables) |
+| `PackagesHandler` | `packages.manage` | `detect`, `list_installed`, `search`, `package_info`, `install`, `remove`, `check_updates`, `update_system`, `list_repos`, `add_repo`, `remove_repo`, `refresh_repos` | System packages. Auto-detection (pacman/apt/dnf) |
+| `HostsManageHandler` | `hosts.manage` | `list`, `add`, `remove` | Remote host CRUD. Persistence in `~/.config/tenodera/hosts.json` |
 
 
 
-## Szczegóły implementacyjne
+## Implementation details
 
 ### Terminal PTY (`terminal_pty.rs`)
-- Otwieranie PTY: `nix::pty::openpty()` z konfigurowalnymi wymiarami
-- Fork: `nix::unistd::fork()` → dziecko execvp shell
-- Rodzic: `AsyncFd` na master FD (non-blocking) do odczytu, dup'd FD do zapisu
-- Detekcja shella: parsowanie `/etc/passwd` po UID
-- Resize: `TIOCSWINSZ` ioctl na FD przy wiadomości `{ "resize": { "cols": N, "rows": N } }`
-- Input klienta: pisanie do master FD przy wiadomości `{ "input": "..." }`
+- PTY opening: `nix::pty::openpty()` with configurable dimensions
+- Fork: `nix::unistd::fork()` → child execvp shell
+- Parent: `AsyncFd` on master FD (non-blocking) for reading, dup'd FD for writing
+- Shell detection: parsing `/etc/passwd` by UID
+- Resize: `TIOCSWINSZ` ioctl on FD upon `{ "resize": { "cols": N, "rows": N } }` message
+- Client input: writing to master FD upon `{ "input": "..." }` message
 
-### Firewall multi-backend (`networking.rs`)
-- Detekcja: sprawdza `which` dla ufw → firewalld → nftables → iptables
-- Status/rules: odpytuje wszystkie wykryte backendy naraz
-- Smart filtering: ukrywa wewnętrzne łańcuchy ufw/docker/firewalld z nftables/iptables
-- Add/remove: różna logika per backend (porty vs serwisy)
+### Multi-backend firewall (`networking.rs`)
+- Detection: checks `which` for ufw → firewalld → nftables → iptables
+- Status/rules: queries all detected backends simultaneously
+- Smart filtering: hides internal ufw/docker/firewalld chains from nftables/iptables
+- Add/remove: different logic per backend (ports vs services)
 
 ### Container management (`containers.rs`)
-- Auto-detekcja: podman (preferowany) → docker
-- JSON parsing: obsługa zarówno JSON array (docker) jak i JSON-per-line (podman)
-- Create: obsługa nazw, portów, env vars, volumów, restart policy, custom commands
-- Service: zarządzanie `docker.service` / `podman.socket` przez systemctl
+- Auto-detection: podman (preferred) → docker
+- JSON parsing: handles both JSON array (docker) and JSON-per-line (podman)
+- Create: supports names, ports, env vars, volumes, restart policy, custom commands
+- Service: manages `docker.service` / `podman.socket` via systemctl
 
 ### Package management (`packages.rs`)
-- Auto-detekcja: pacman → apt → dnf
-- Dedykowane parsery per distro (pacman -Q, dpkg-query, rpm -qa)
-- Obsługa repozytoriów specyficzna per menedżer
+- Auto-detection: pacman → apt → dnf
+- Dedicated parsers per distro (pacman -Q, dpkg-query, rpm -qa)
+- Repository management specific to each package manager
 
-## Zależności
+## Dependencies
 
-- `tenodera-protocol` — współdzielone typy
+- `tenodera-protocol` — shared types
 - `tokio` — async runtime (full features)
-- `serde` + `serde_json` — serializacja JSON
+- `serde` + `serde_json` — JSON serialization
 - `nix 0.29` — PTY, fork, setsid, dup2, ioctl, hostname
-- `libc` — surowe syscalle (read, write, ioctl, fcntl, statvfs)
+- `libc` — raw syscalls (read, write, ioctl, fcntl, statvfs)
 - `async-trait` — async trait methods
-- `zbus 5` — D-Bus (dostępne, nieużywane bezpośrednio)
-- `chrono` — timestampy
-- `tracing` — logowanie
-- `uuid` — generowanie ID kanałów
+- `zbus 5` — D-Bus (available, not used directly)
+- `chrono` — timestamps
+- `tracing` — logging
+- `uuid` — channel ID generation
 
-## Uruchomienie
+## Running
 
-Bridge jest normalnie uruchamiany przez gateway (nie bezpośrednio):
+The bridge is normally launched by the gateway (not directly):
 
 ```bash
-# Ręczne testowanie — pipe JSON na stdin:
+# Manual testing — pipe JSON to stdin:
 echo '{"type":"open","channel":"ch1","payload":"system.info"}' | ./tenodera-bridge
 ```
 
-Zmienne środowiskowe:
-- `RUST_LOG` — filtr logów, np. `tenodera_bridge=debug`
+Environment variables:
+- `RUST_LOG` — log filter, e.g. `tenodera_bridge=debug`

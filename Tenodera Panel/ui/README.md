@@ -1,95 +1,95 @@
 # tenodera-ui
 
-Frontendowa aplikacja React (SPA) dla panelu administracyjnego Tenodera. Komunikuje się z gateway przez WebSocket używając protokołu kanałowego.
+React frontend application (SPA) for the Tenodera administration panel. Communicates with the gateway via WebSocket using the channel protocol.
 
-## Stack technologiczny
+## Tech stack
 
-| Technologia | Wersja | Rola |
-|-------------|--------|------|
-| React | 19 | Framework UI |
-| TypeScript | 5.7 | Typowanie |
+| Technology | Version | Role |
+|------------|---------|------|
+| React | 19 | UI framework |
+| TypeScript | 5.7 | Type safety |
 | Vite | 6 | Bundler + dev server |
-| React Router DOM | 7 | Routing SPA |
-| @tanstack/react-query | 5 | Cache i zarządzanie stanem async |
-| Recharts | 3.8 | Wykresy (Dashboard, metryki) |
-| @xterm/xterm | 5.5 | Emulator terminala |
-| @xterm/addon-fit | 0.10 | Auto-resize terminala |
+| React Router DOM | 7 | SPA routing |
+| @tanstack/react-query | 5 | Async state management & caching |
+| Recharts | 3.8 | Charts (Dashboard, metrics) |
+| @xterm/xterm | 5.5 | Terminal emulator |
+| @xterm/addon-fit | 0.10 | Terminal auto-resize |
 
-## Architektura
+## Architecture
 
-### Warstwa transportowa (`src/api/`)
+### Transport layer (`src/api/`)
 
-#### `transport.ts` — WebSocket kanałowy
+#### `transport.ts` — Channel WebSocket
 
-Singleton WebSocket z multiplexingiem kanałów:
+Singleton WebSocket with channel multiplexing:
 
-- **`connect()`** — nawiązuje WS do `/api/ws?session_id=...` (auto wss:/ws: wg protokołu strony)
-- **`disconnect()`** — zamyka WS i czyści listenery
-- **`openChannel(payload, options)`** — otwiera kanał, zwraca obiekt z:
-  - `channel` — ID kanału
-  - `onMessage(cb)` — rejestracja callbacka
-  - `send(data)` — wysyłanie danych
-  - `close()` — zamknięcie kanału
-- **`request(payload, options)`** — one-shot: otwiera kanał, zbiera wszystkie Data, resolve na Close
+- **`connect()`** — establishes WS to `/api/ws?session_id=...` (auto wss:/ws: based on page protocol)
+- **`disconnect()`** — closes WS and clears listeners
+- **`openChannel(payload, options)`** — opens a channel, returns object with:
+  - `channel` — channel ID
+  - `onMessage(cb)` — register callback
+  - `send(data)` — send data
+  - `close()` — close the channel
+- **`request(payload, options)`** — one-shot: opens channel, collects all Data, resolves on Close
 
-Wiadomości przychodzące są routowane do listenerów po channel ID. Ping od serwera jest automatycznie odpowiadany Pong.
+Incoming messages are routed to listeners by channel ID. Server Ping is automatically answered with Pong.
 
-#### `auth.ts` — Klient logowania
+#### `auth.ts` — Login client
 
 ```typescript
 login(user, password): Promise<{ session_id, user }>
 // POST /api/auth/login
 ```
 
-#### `HostTransportContext.tsx` — Routing multi-host
+#### `HostTransportContext.tsx` — Multi-host routing
 
-React Context + hook `useTransport()` do transparentnego routingu:
+React Context + `useTransport()` hook for transparent routing:
 
-- Bez `hostId` → kanały idą do lokalnego bridge
-- Z `hostId` → dodaje `{ host: hostId }` do opcji Open → gateway routuje przez SSH do zdalnego bridge
+- Without `hostId` → channels go to local bridge
+- With `hostId` → adds `{ host: hostId }` to Open options → gateway routes via SSH to remote bridge
 
 ```tsx
 <HostTransportProvider value="remote-host-id">
-  <Dashboard />  {/* automatycznie odpytuje zdalny host */}
+  <Dashboard />  {/* automatically queries the remote host */}
 </HostTransportProvider>
 ```
 
 ### Routing (`App.tsx`)
 
-| Ścieżka | Komponent | Opis |
-|----------|-----------|------|
-| `/login` | `Login` | Formularz logowania |
-| `/*` | `Shell` | Layout z nawigacją (zagnieżdżone route) |
+| Path | Component | Description |
+|------|-----------|-------------|
+| `/login` | `Login` | Login form |
+| `/*` | `Shell` | Layout with navigation (nested routes) |
 
-`Shell` zawiera sidebar nawigacyjny i zagnieżdżony routing do podstron.
+`Shell` contains a sidebar navigation and nested routing to sub-pages.
 
-### Strony (`src/pages/`)
+### Pages (`src/pages/`)
 
-| Strona | Payload types | Opis |
-|--------|--------------|------|
-| `Dashboard.tsx` | `system.info`, `metrics.stream` | Informacje o systemie + wykresy CPU/RAM/swap/load/IO w czasie rzeczywistym |
-| `Services.tsx` | `systemd.manage` | Lista usług systemd z akcjami start/stop/restart/enable/disable |
-| `Containers.tsx` | `container.manage` | Docker/Podman: kontenery, obrazy, tworzenie, logi |
-| `Storage.tsx` | `storage.stream`, `disk.usage` | Drzewo urządzeń blokowych + wykresy I/O + użycie partycji |
-| `Networking.tsx` | `networking.stream`, `networking.manage` | Interfejsy, ruch sieciowy, firewall, mosty, VLAN, VPN |
-| `Packages.tsx` | `packages.manage` | Pakiety systemowe: lista, wyszukiwanie, instalacja, repozytoria |
-| `Logs.tsx` | `journal.query` | Wpisy journald z filtrami |
-| `Terminal.tsx` | `terminal.pty` | Pełny emulator terminala (xterm.js) z resize |
-| `Files.tsx` | `file.list` | Przeglądarka plików z nawigacją |
-| `Hosts.tsx` | `hosts.manage` | Zarządzanie hostami zdalnymi (CRUD) |
-| `RemoteDashboard.tsx` | jak `Dashboard` | Dashboard zdalnego hosta (via `HostTransportProvider`) |
-| `RemoteShell.tsx` | — | Layout dla zdalnego hosta ze zagnieżdżonymi stronami |
-| `Login.tsx` | — | Formularz logowania, zapisuje session_id w sessionStorage |
-| `Shell.tsx` | — | Główny layout z sidebar, routing wewnętrzny |
+| Page | Payload types | Description |
+|------|--------------|-------------|
+| `Dashboard.tsx` | `system.info`, `metrics.stream` | System info + real-time CPU/RAM/swap/load/IO charts |
+| `Services.tsx` | `systemd.manage` | systemd service list with start/stop/restart/enable/disable actions |
+| `Containers.tsx` | `container.manage` | Docker/Podman: containers, images, creation, logs |
+| `Storage.tsx` | `storage.stream`, `disk.usage` | Block device tree + I/O charts + partition usage |
+| `Networking.tsx` | `networking.stream`, `networking.manage` | Interfaces, network traffic, firewall, bridges, VLAN, VPN |
+| `Packages.tsx` | `packages.manage` | System packages: list, search, install, repositories |
+| `Logs.tsx` | `journal.query` | journald entries with filters |
+| `Terminal.tsx` | `terminal.pty` | Full terminal emulator (xterm.js) with resize |
+| `Files.tsx` | `file.list` | File browser with navigation |
+| `Hosts.tsx` | `hosts.manage` | Remote host management (CRUD) |
+| `RemoteDashboard.tsx` | same as `Dashboard` | Remote host dashboard (via `HostTransportProvider`) |
+| `RemoteShell.tsx` | — | Remote host layout with nested pages |
+| `Login.tsx` | — | Login form, saves session_id to sessionStorage |
+| `Shell.tsx` | — | Main layout with sidebar, internal routing |
 
-### Zarządzanie sesją
+### Session management
 
-- Po zalogowaniu: `session_id` i `user` w `sessionStorage`
-- WebSocket łączy się z `session_id` w query param
-- Przy zamknięciu WS: redirect do `/login`
-- Brak session → redirect do `/login`
+- After login: `session_id` and `user` in `sessionStorage`
+- WebSocket connects with `session_id` in query param
+- On WS close: redirect to `/login`
+- No session → redirect to `/login`
 
-## Konfiguracja deweloperska
+## Development setup
 
 ### Vite dev server
 
@@ -107,37 +107,37 @@ server: {
 }
 ```
 
-### Komendy
+### Commands
 
 ```bash
-npm install      # instalacja zależności
-npm run dev      # dev server na :3000 z HMR
-npm run build    # produkcyjny build do dist/
-npm run preview  # podgląd builda
+npm install      # install dependencies
+npm run dev      # dev server on :3000 with HMR
+npm run build    # production build to dist/
+npm run preview  # preview the build
 ```
 
-### Produkcyjny build
+### Production build
 
-Build trafia do `ui/dist/`. Gateway serwuje te pliki z katalogu `TENODERA_UI_DIR` (domyślnie `./ui/dist`).
+Build output goes to `ui/dist/`. The gateway serves these files from the `TENODERA_UI_DIR` directory (default `./ui/dist`).
 
-## Struktura plików
+## File structure
 
 ```
 ui/
-├── index.html          # Entry point HTML
-├── package.json        # Zależności i skrypty
-├── tsconfig.json       # Konfiguracja TypeScript
-├── vite.config.ts      # Konfiguracja Vite + proxy
-├── public/             # Pliki statyczne
+├── index.html          # HTML entry point
+├── package.json        # Dependencies and scripts
+├── tsconfig.json       # TypeScript configuration
+├── vite.config.ts      # Vite configuration + proxy
+├── public/             # Static files
 └── src/
     ├── main.tsx        # React root (StrictMode + QueryClientProvider)
-    ├── App.tsx         # Router główny
-    ├── index.css       # Style globalne
-    ├── vite-env.d.ts   # Typy Vite
+    ├── App.tsx         # Main router
+    ├── index.css       # Global styles
+    ├── vite-env.d.ts   # Vite types
     ├── api/
-    │   ├── transport.ts            # WebSocket transport kanałowy
-    │   ├── auth.ts                 # Klient logowania
-    │   └── HostTransportContext.tsx # Context multi-host
+    │   ├── transport.ts            # Channel WebSocket transport
+    │   ├── auth.ts                 # Login client
+    │   └── HostTransportContext.tsx # Multi-host context
     └── pages/
         ├── Login.tsx
         ├── Shell.tsx

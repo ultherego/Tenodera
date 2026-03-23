@@ -1,111 +1,111 @@
 # tenodera-protocol
 
-Biblioteka współdzielonych typów definiująca protokół komunikacji kanałowej pomiędzy wszystkimi komponentami systemu Tenodera.
+Shared type library defining the channel-based communication protocol between all Tenodera system components.
 
-## Rola w architekturze
+## Role in architecture
 
-`tenodera-protocol` to crate typu **library** — nie produkuje żadnego binarnego pliku wykonywalnego. Jest zależnością dla wszystkich pozostałych crate'ów w workspace (`gateway`, `bridge`, `priv-bridge`). Definiuje wspólny "język" wymiany wiadomości: enumy, struktury i typy błędów, które gwarantują spójność serializacji/deserializacji JSON pomiędzy frontendem, gateway i bridge'em.
+`tenodera-protocol` is a **library** crate — it does not produce any binary executable. It is a dependency for all other crates in the workspace (`gateway`, `bridge`, `priv-bridge`). It defines the common "language" for message exchange: enums, structs, and error types that guarantee consistent JSON serialization/deserialization between the frontend, gateway, and bridge.
 
-## Moduły
+## Modules
 
-### `message.rs` — Enumy wiadomości protokołu
+### `message.rs` — Protocol message enums
 
-Główny typ `Message` to enum z tagiem `type` (serde tag), reprezentujący ramki przesyłane przez WebSocket:
+The main `Message` type is a serde-tagged enum representing frames sent over WebSocket:
 
-| Wariant | Kierunek | Opis |
-|---------|----------|------|
-| `Open` | Klient → Bridge | Otwiera nowy kanał. Zawiera `channel` (ID) i `ChannelOpenOptions` (payload type + extra opcje) |
-| `Ready` | Bridge → Klient | Potwierdzenie gotowości kanału |
-| `Data` | Dwukierunkowy | Dane payload na otwartym kanale (`serde_json::Value`) |
-| `Control` | Dwukierunkowy | Sygnał sterujący na kanale (komenda + dodatkowe pola) |
-| `Close` | Dwukierunkowy | Zamknięcie kanału. `problem: None` = czyste zamknięcie, `Some(reason)` = błąd |
-| `Auth` | Klient → Gateway | Uwierzytelnianie (credentials) |
-| `AuthResult` | Gateway → Klient | Wynik uwierzytelniania (success/failure + user) |
-| `Ping` | Dwukierunkowy | Heartbeat |
-| `Pong` | Dwukierunkowy | Odpowiedź na heartbeat |
+| Variant | Direction | Description |
+|---------|-----------|-------------|
+| `Open` | Client → Bridge | Opens a new channel. Contains `channel` (ID) and `ChannelOpenOptions` (payload type + extra options) |
+| `Ready` | Bridge → Client | Channel readiness confirmation |
+| `Data` | Bidirectional | Payload data on an open channel (`serde_json::Value`) |
+| `Control` | Bidirectional | Control signal on a channel (command + extra fields) |
+| `Close` | Bidirectional | Channel close. `problem: None` = clean close, `Some(reason)` = error |
+| `Auth` | Client → Gateway | Authentication (credentials) |
+| `AuthResult` | Gateway → Client | Authentication result (success/failure + user) |
+| `Ping` | Bidirectional | Heartbeat |
+| `Pong` | Bidirectional | Heartbeat response |
 
-Typ `AuthCredentials` obsługuje dwa schematy:
+The `AuthCredentials` type supports two schemes:
 - **Basic** — `user` + `password`
 - **Token** — bearer `token`
 
-### `channel.rs` — Typy kanałów
+### `channel.rs` — Channel types
 
-- `ChannelId` — alias na `String`, unikalny identyfikator kanału w sesji
-- `ChannelState` — maszyna stanów kanału: `Opening` → `Ready` → `Closing` → `Closed`
-- `ChannelOpenOptions` — opcje wysyłane przy otwieraniu kanału:
-  - `payload: String` — wymagany, wskazuje handler w bridge (np. `"metrics.stream"`)
-  - `superuser: Option<SuperuserMode>` — opcjonalny tryb uprawnień (`Require` lub `Try`)
-  - `extra: serde_json::Map` — dodatkowe opcje specyficzne dla payloadu (flatten)
-- `SuperuserMode` — enum: `Require` (wymuś root) lub `Try` (spróbuj, nie failuj)
+- `ChannelId` — alias for `String`, unique channel identifier within a session
+- `ChannelState` — channel state machine: `Opening` → `Ready` → `Closing` → `Closed`
+- `ChannelOpenOptions` — options sent when opening a channel:
+  - `payload: String` — required, points to a handler in the bridge (e.g. `"metrics.stream"`)
+  - `superuser: Option<SuperuserMode>` — optional privilege mode (`Require` or `Try`)
+  - `extra: serde_json::Map` — additional payload-specific options (flatten)
+- `SuperuserMode` — enum: `Require` (force root) or `Try` (attempt, don't fail)
 
-### `payload.rs` — Rejestr typów payload
+### `payload.rs` — Payload type registry
 
-Enum `Payload` mapuje stringi payload type na warianty:
+The `Payload` enum maps payload type strings to variants:
 
-| String | Wariant | Opis |
-|--------|---------|------|
-| `system.info` | `SystemInfo` | Informacje o hoście |
-| `systemd.units` | `SystemdUnits` | Lista usług systemd |
-| `systemd.unit.action` | `SystemdUnitAction` | Akcje na usługach |
-| `journal.query` | `JournalQuery` | Zapytania do journald |
-| `journal.follow` | `JournalFollow` | Śledzenie journald (streaming) |
-| `file.read` | `FileRead` | Odczyt pliku |
-| `file.write` | `FileWrite` | Zapis pliku |
-| `file.list` | `FileList` | Listing katalogu |
-| `process.exec` | `ProcessExec` | Wykonanie procesu |
-| `process.stream` | `ProcessStream` | Streaming procesu |
-| `terminal.pty` | `TerminalPty` | Terminal PTY |
-| `network.interfaces` | `NetworkInterfaces` | Interfejsy sieciowe |
-| `firewall.rules` | `FirewallRules` | Reguły firewalla |
-| `metrics.stream` | `MetricsStream` | Streaming metryk |
-| `ssh.remote` | `SshRemote` | Zdalne SSH |
-| `package.updates` | `PackageUpdates` | Aktualizacje pakietów |
-| `container.list` | `ContainerList` | Lista kontenerów |
-| `Custom(String)` | — | Escape hatch dla nieznanych/przyszłych payloadów |
+| String | Variant | Description |
+|--------|---------|-------------|
+| `system.info` | `SystemInfo` | Host information |
+| `systemd.units` | `SystemdUnits` | systemd service list |
+| `systemd.unit.action` | `SystemdUnitAction` | Service actions |
+| `journal.query` | `JournalQuery` | journald queries |
+| `journal.follow` | `JournalFollow` | journald following (streaming) |
+| `file.read` | `FileRead` | File read |
+| `file.write` | `FileWrite` | File write |
+| `file.list` | `FileList` | Directory listing |
+| `process.exec` | `ProcessExec` | Process execution |
+| `process.stream` | `ProcessStream` | Process streaming |
+| `terminal.pty` | `TerminalPty` | PTY terminal |
+| `network.interfaces` | `NetworkInterfaces` | Network interfaces |
+| `firewall.rules` | `FirewallRules` | Firewall rules |
+| `metrics.stream` | `MetricsStream` | Metrics streaming |
+| `ssh.remote` | `SshRemote` | Remote SSH |
+| `package.updates` | `PackageUpdates` | Package updates |
+| `container.list` | `ContainerList` | Container list |
+| `Custom(String)` | — | Escape hatch for unknown/future payloads |
 
-Metody: `from_str()` / `as_str()` do konwersji string ↔ enum, `Display` trait.
+Methods: `from_str()` / `as_str()` for string ↔ enum conversion, `Display` trait.
 
-### `error.rs` — Typy błędów
+### `error.rs` — Error types
 
-`ProtocolError` (z `thiserror`) definiuje warianty:
+`ProtocolError` (via `thiserror`) defines variants:
 
-| Wariant | Opis |
-|---------|------|
-| `InvalidMessage` | Nieprawidłowy format wiadomości |
-| `UnknownPayload` | Nieznany typ payload |
-| `ChannelNotFound` | Kanał nie istnieje |
-| `ChannelAlreadyExists` | Kanał już istnieje |
-| `AuthFailed` | Błąd uwierzytelniania |
-| `PermissionDenied` | Odmowa dostępu |
-| `Serialization` | Błąd serializacji JSON (from `serde_json::Error`) |
-| `Transport` | Błąd warstwy transportowej |
+| Variant | Description |
+|---------|-------------|
+| `InvalidMessage` | Invalid message format |
+| `UnknownPayload` | Unknown payload type |
+| `ChannelNotFound` | Channel does not exist |
+| `ChannelAlreadyExists` | Channel already exists |
+| `AuthFailed` | Authentication failure |
+| `PermissionDenied` | Access denied |
+| `Serialization` | JSON serialization error (from `serde_json::Error`) |
+| `Transport` | Transport layer error |
 
-## Zależności
+## Dependencies
 
-- `serde` + `serde_json` — serializacja/deserializacja JSON
-- `thiserror` — deklaratywne typy błędów
-- `uuid` — generowanie ID (dostępny, choć nieużywany bezpośrednio w tym crate)
-- `chrono` — typy czasowe
-- `bytes` — bufory bajtowe
+- `serde` + `serde_json` — JSON serialization/deserialization
+- `thiserror` — declarative error types
+- `uuid` — ID generation (available, though not used directly in this crate)
+- `chrono` — time types
+- `bytes` — byte buffers
 
-## Przykład użycia
+## Usage example
 
 ```rust
 use tenodera_protocol::message::Message;
 use tenodera_protocol::channel::ChannelOpenOptions;
 
-// Deserializacja wiadomości z JSON
+// Deserialize a message from JSON
 let json = r#"{"type":"open","channel":"ch1","payload":"metrics.stream","interval":1000}"#;
 let msg: Message = serde_json::from_str(json).unwrap();
 
-// Serializacja odpowiedzi
+// Serialize a response
 let resp = Message::Ready { channel: "ch1".to_string() };
 let json_out = serde_json::to_string(&resp).unwrap();
 ```
 
-## Format na drucie
+## Wire format
 
-Każda ramka WebSocket to pojedynczy obiekt JSON z polem `type`:
+Each WebSocket frame is a single JSON object with a `type` field:
 
 ```jsonc
 // Open
@@ -117,10 +117,10 @@ Każda ramka WebSocket to pojedynczy obiekt JSON z polem `type`:
 // Data
 { "type": "data", "channel": "ch1", "data": { "hostname": "server1", ... } }
 
-// Close (czyste)
+// Close (clean)
 { "type": "close", "channel": "ch1" }
 
-// Close (z błędem)
+// Close (with error)
 { "type": "close", "channel": "ch1", "problem": "access-denied" }
 
 // Ping/Pong
