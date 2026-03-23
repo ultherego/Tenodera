@@ -1,0 +1,19 @@
+[Unit]
+Description=Tenodera Privileged Bridge
+Documentation=https://github.com/tenodera
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tenodera-priv-bridge
+StandardInput=socket
+
+# Runs as root for privileged operations — minimal capabilities
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

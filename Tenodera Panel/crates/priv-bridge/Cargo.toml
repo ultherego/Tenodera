@@ -1,0 +1,19 @@
+[package]
+name = "tenodera-priv-bridge"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "tenodera-priv-bridge"
+path = "src/main.rs"
+
+[dependencies]
+tenodera-protocol = { workspace = true }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+nix = { workspace = true }

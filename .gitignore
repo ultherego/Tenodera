@@ -1,0 +1,28 @@
+# Build artifacts
+**/target/
+
+# Vagrant
+**/.vagrant/
+
+# Node
+**/node_modules/
+**/dist/
+
+# Environment & secrets
+.env
+*.pem
+*.key
+*.cert
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Rust
+**/*.rs.bk

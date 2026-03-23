@@ -1,0 +1,35 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-card: #0f3460;
+  --accent: #e94560;
+  --text-primary: #eee;
+  --text-secondary: #aaa;
+  --border: #333;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* Responsive dashboard grids — collapse on narrow screens */
+@media (max-width: 900px) {
+  .dashboard-grid3,
+  .dashboard-grid2 {
+    grid-template-columns: 1fr !important;
+  }
+}
