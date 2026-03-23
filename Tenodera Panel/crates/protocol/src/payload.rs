@@ -20,6 +20,8 @@ pub enum Payload {
     SshRemote,
     PackageUpdates,
     ContainerList,
+    KdumpInfo,
+    LogFiles,
     /// Escape hatch for unknown / future / plugin payloads.
     Custom(String),
 }
@@ -44,6 +46,8 @@ impl Payload {
             "ssh.remote" => Self::SshRemote,
             "package.updates" => Self::PackageUpdates,
             "container.list" => Self::ContainerList,
+            "kdump.info" => Self::KdumpInfo,
+            "log.files" => Self::LogFiles,
             other => Self::Custom(other.to_string()),
         }
     }
@@ -67,6 +71,8 @@ impl Payload {
             Self::SshRemote => "ssh.remote",
             Self::PackageUpdates => "package.updates",
             Self::ContainerList => "container.list",
+            Self::KdumpInfo => "kdump.info",
+            Self::LogFiles => "log.files",
             Self::Custom(s) => s.as_str(),
         }
     }

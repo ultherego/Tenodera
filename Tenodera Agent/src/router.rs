@@ -7,9 +7,9 @@ use crate::protocol::message::Message;
 
 use crate::handler::ChannelHandler;
 use crate::handlers::{
-    containers, disk_usage, file_list, hardware_info, hosts, journal_query,
-    metrics_stream, network_stats, networking, packages, storage, superuser_verify,
-    system_info, systemd_units, terminal_pty, top_processes,
+    containers, disk_usage, file_list, hardware_info, hosts, journal_query, kdump,
+    log_files, metrics_stream, network_stats, networking, packages, storage,
+    superuser_verify, system_info, systemd_units, terminal_pty, top_processes,
 };
 
 /// Active streaming channel state.
@@ -62,6 +62,8 @@ impl Router {
         self.register(Arc::new(hardware_info::HardwareInfoHandler));
         self.register(Arc::new(top_processes::TopProcessesHandler));
         self.register(Arc::new(hosts::HostsManageHandler));
+        self.register(Arc::new(kdump::KdumpInfoHandler));
+        self.register(Arc::new(log_files::LogFilesHandler));
     }
 
     /// Route a single message. Returns immediate responses and may spawn

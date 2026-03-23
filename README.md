@@ -25,6 +25,8 @@ Browser ──WSS──▶ Gateway (:9090) ──spawn──▶ Bridge (per-user
 - **Containers** — Docker/Podman container listing
 - **Files** — Remote file browser
 - **Logs** — Live journald log viewer with filtering
+- **Log Files** — Browse and search `/var/log` files with keyword search, context lines, and date+time range filtering
+- **Kernel Dump** — View kdump status, crash kernel config, and browse crash dumps with dmesg output
 - **Multi-host** — Manage multiple servers from one panel
 
 ## Requirements
@@ -203,6 +205,79 @@ Each VM gets: Rust toolchain, SSH with password auth, sudo access.
 | tenodera-remote-5 | 192.168.56.14 |
 | tenodera-remote-6 | 192.168.56.15 |
 
+## Optional: Kernel Dump (kdump) setup
+
+The **Kernel Dump** page in the panel shows crash dump status from managed hosts. It works out of the box (showing "not installed" if kdump is absent), but to get full functionality you need to install and configure kdump on the target hosts.
+
+### Debian / Ubuntu
+
+```bash
+sudo apt install -y kdump-tools crash kexec-tools makedumpfile
+
+# Add crashkernel parameter to GRUB
+sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 crashkernel=256M"/' /etc/default/grub
+sudo update-grub
+
+# Enable the service and reboot
+sudo systemctl enable kdump-tools
+sudo reboot
+```
+
+### Fedora / RHEL / CentOS
+
+```bash
+sudo dnf install -y kexec-tools crash
+
+# Set crashkernel (Fedora 35+)
+sudo kdumpctl reset-crashkernel
+# Or manually:
+# sudo grubby --args="crashkernel=256M" --update-kernel=ALL
+
+# Enable the service and reboot
+sudo systemctl enable kdump
+sudo reboot
+```
+
+### Arch Linux
+
+kdump on Arch requires AUR packages and manual kernel parameter setup:
+
+```bash
+# Install from AUR (using yay or paru)
+yay -S simple-kdump   # or: yay -S kdumpst
+
+# Install crash analysis tool (official repo)
+sudo pacman -S crash
+
+# Add crashkernel parameter (512M recommended on Arch)
+# Edit your boot loader config and append: crashkernel=512M
+# For GRUB:
+sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 crashkernel=512M"/' /etc/default/grub
+sudo grub-mkconfig -o /boot/grub/grub.cfg
+
+# Enable the service (simple-kdump) and reboot
+sudo systemctl enable simple-kdump-setup
+sudo reboot
+```
+
+### Verify
+
+After reboot, confirm kdump is working:
+
+```bash
+# Should return "1"
+cat /sys/kernel/kexec_crash_loaded
+
+# Should show reserved memory (> 0)
+cat /sys/kernel/kexec_crash_size
+
+# Check service status
+systemctl status kdump-tools   # Debian/Ubuntu
+systemctl status kdump         # Fedora/RHEL
+```
+
+Crash dumps are saved to `/var/crash/` (all distros) or `/var/lib/kdump/`.
+
 ## Project structure
 
 ```
@@ -215,7 +290,7 @@ Tenodera Agent/          Remote host agent
 Tenodera Panel/          Central server
 ├── crates/
 │   ├── gateway/         HTTP/WebSocket gateway + PAM auth
-│   ├── bridge/          Per-user bridge with 18 handler types
+│   ├── bridge/          Per-user bridge with 20 handler types
 │   ├── priv-bridge/     Privileged root helper (strict allowlist)
 │   └── protocol/        Shared message types & payloads
 ├── ui/                  React + TypeScript SPA (Vite)

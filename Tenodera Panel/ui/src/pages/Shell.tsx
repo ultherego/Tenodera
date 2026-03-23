@@ -12,6 +12,8 @@ import { Storage } from './Storage.tsx';
 import { Networking } from './Networking.tsx';
 import { Packages } from './Packages.tsx';
 import { Hosts } from './Hosts.tsx';
+import { Kdump } from './Kdump.tsx';
+import { LogFiles } from './LogFiles.tsx';
 
 /* ── Superuser context ─────────────────────────────────── */
 
@@ -46,8 +48,10 @@ const NAV_SECTIONS = [
     label: 'Tools',
     items: [
       { path: '/logs', label: 'Logs', icon: '📜' },
+      { path: '/log-files', label: 'Log Files', icon: '🗒️' },
       { path: '/terminal', label: 'Terminal', icon: '🖥️' },
       { path: '/files', label: 'Files', icon: '📁' },
+      { path: '/kdump', label: 'Kernel Dump', icon: '💥' },
     ],
   },
 ];
@@ -515,6 +519,8 @@ export function Shell({ sessionId: _sessionId, user, onLogout }: ShellProps) {
                   <Route path="/networking" element={<Networking />} />
                   <Route path="/packages" element={<Packages />} />
                   <Route path="/files" element={<Files user={user} />} />
+                  <Route path="/kdump" element={<Kdump />} />
+                  <Route path="/log-files" element={<LogFiles />} />
                 </Routes>
               ) : (
                 <p>Connecting to server...</p>

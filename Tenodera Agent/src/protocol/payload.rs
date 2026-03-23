@@ -17,6 +17,8 @@ pub enum Payload {
     ContainerManage,
     NetworkingManage,
     PackagesManage,
+    KdumpInfo,
+    LogFiles,
     Custom(String),
 }
 
@@ -40,6 +42,8 @@ impl Payload {
             "container.manage" => Self::ContainerManage,
             "networking.manage" => Self::NetworkingManage,
             "packages.manage" => Self::PackagesManage,
+            "kdump.info" => Self::KdumpInfo,
+            "log.files" => Self::LogFiles,
             other => Self::Custom(other.to_string()),
         }
     }
@@ -63,6 +67,8 @@ impl Payload {
             Self::ContainerManage => "container.manage",
             Self::NetworkingManage => "networking.manage",
             Self::PackagesManage => "packages.manage",
+            Self::KdumpInfo => "kdump.info",
+            Self::LogFiles => "log.files",
             Self::Custom(s) => s.as_str(),
         }
     }
