@@ -50,6 +50,11 @@ export function Hosts({ onClose, onChange }: HostsProps) {
     setFormError('');
   }, []);
 
+  const refreshList = useCallback(() => {
+    chRef.current?.send({ action: 'list' });
+    onChange?.();
+  }, [onChange]);
+
   const handleData = useCallback((d: Record<string, unknown>) => {
     const action = d.action as string | undefined;
 
@@ -57,20 +62,22 @@ export function Hosts({ onClose, onChange }: HostsProps) {
       setHosts((d.hosts as HostEntry[]) || []);
     } else if (action === 'add') {
       if (d.ok) {
-        window.location.reload();
+        resetForm();
+        refreshList();
       } else {
         setFormError((d.error as string) || 'Failed to add host');
       }
     } else if (action === 'edit') {
       if (d.ok) {
-        window.location.reload();
+        resetForm();
+        refreshList();
       } else {
         setFormError((d.error as string) || 'Failed to edit host');
       }
     } else if (action === 'remove' && d.ok) {
-      window.location.reload();
+      refreshList();
     }
-  }, [resetForm, onChange]);
+  }, [resetForm, onChange, refreshList]);
 
   /* ── open channel ── */
   useEffect(() => {

@@ -1,3 +1,4 @@
+pub mod audit;
 mod handler;
 mod handlers;
 mod router;

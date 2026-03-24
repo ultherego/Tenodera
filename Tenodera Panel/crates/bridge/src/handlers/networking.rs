@@ -131,6 +131,7 @@ impl ChannelHandler for NetworkManageHandler {
     async fn data(&self, channel: &str, data: &serde_json::Value) -> Vec<Message> {
         let action = data.get("action").and_then(|a| a.as_str()).unwrap_or("");
         let password = data.get("password").and_then(|p| p.as_str()).unwrap_or("");
+        let user = data.get("_user").and_then(|u| u.as_str()).unwrap_or("");
 
         let result = match action {
             // ── Interface listing ──
@@ -182,22 +183,38 @@ impl ChannelHandler for NetworkManageHandler {
             }
             "iface_up" => {
                 let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                sudo_action(password, &["ip", "link", "set", name, "up"]).await
+                if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || "-_.".contains(c)) {
+                    serde_json::json!({ "error": "invalid interface name" })
+                } else {
+                    sudo_action(password, &["ip", "link", "set", name, "up"]).await
+                }
             }
             "iface_down" => {
                 let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                sudo_action(password, &["ip", "link", "set", name, "down"]).await
+                if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || "-_.".contains(c)) {
+                    serde_json::json!({ "error": "invalid interface name" })
+                } else {
+                    sudo_action(password, &["ip", "link", "set", name, "down"]).await
+                }
             }
 
             // ── VPN ──
             "vpn_list" => vpn_list().await,
             "vpn_connect" => {
                 let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                sudo_action(password, &["nmcli", "connection", "up", name]).await
+                if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || "-_ ".contains(c)) {
+                    serde_json::json!({ "error": "invalid connection name" })
+                } else {
+                    sudo_action(password, &["nmcli", "connection", "up", name]).await
+                }
             }
             "vpn_disconnect" => {
                 let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                sudo_action(password, &["nmcli", "connection", "down", name]).await
+                if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || "-_ ".contains(c)) {
+                    serde_json::json!({ "error": "invalid connection name" })
+                } else {
+                    sudo_action(password, &["nmcli", "connection", "down", name]).await
+                }
             }
 
             // ── Network logs ──
@@ -208,6 +225,18 @@ impl ChannelHandler for NetworkManageHandler {
 
             _ => serde_json::json!({ "error": format!("unknown action: {action}") }),
         };
+
+        // Audit mutating network actions
+        match action {
+            "firewall_enable" | "firewall_disable" | "firewall_add_rule" | "firewall_remove_rule"
+            | "add_bridge" | "add_vlan" | "remove_interface" | "iface_up" | "iface_down"
+            | "vpn_connect" | "vpn_disconnect" => {
+                let target = data.get("name").or(data.get("parent")).and_then(|v| v.as_str()).unwrap_or("");
+                let ok = result.get("error").is_none();
+                crate::audit::log(user, &format!("net.{action}"), target, ok, "");
+            }
+            _ => {}
+        }
 
         vec![Message::Data {
             channel: channel.to_string(),

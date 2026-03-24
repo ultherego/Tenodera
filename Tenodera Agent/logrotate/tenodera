@@ -1,0 +1,10 @@
+/var/log/tenodera_audit.log {
+    daily
+    rotate 3
+    maxsize 1G
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

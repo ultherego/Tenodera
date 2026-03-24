@@ -36,17 +36,20 @@ pub async fn ws_upgrade(
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Check idle timeout
-    let elapsed = session.created_at.elapsed().as_secs();
+    let elapsed = session.last_activity.elapsed().as_secs();
     if elapsed > state.config.idle_timeout_secs {
         state.sessions.remove(&session_id).await;
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    // Refresh activity on WS upgrade
+    state.sessions.touch(&session_id).await;
+
     let user = session.user.clone();
     let password = session.password.clone();
     tracing::info!(user = %user, "WS upgrade authorized");
 
-    Ok(ws.on_upgrade(move |socket| handle_socket(state, socket, user, password)))
+    Ok(ws.on_upgrade(move |socket| handle_socket(state, socket, session_id, user, password)))
 }
 
 /// Spawn a task forwarding messages from a bridge to the WebSocket sink.
@@ -73,7 +76,7 @@ fn spawn_bridge_forwarder(
     });
 }
 
-async fn handle_socket(state: Arc<AppState>, socket: WebSocket, user: String, password: String) {
+async fn handle_socket(state: Arc<AppState>, socket: WebSocket, session_id: String, user: String, password: String) {
     let (sink, mut stream) = socket.split();
 
     tracing::debug!(user = %user, "new WebSocket connection");
@@ -121,6 +124,9 @@ async fn handle_socket(state: Arc<AppState>, socket: WebSocket, user: String, pa
     while let Some(Ok(msg)) = stream.next().await {
         match msg {
             Message::Text(text) => {
+                // Refresh session activity on every message
+                state.sessions.touch(&session_id).await;
+
                 match serde_json::from_str::<message::Message>(&text) {
                     Ok(message::Message::Ping) => {
                         let pong = serde_json::to_string(&message::Message::Pong)

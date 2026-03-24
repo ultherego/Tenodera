@@ -45,16 +45,27 @@ impl ChannelHandler for PackagesHandler {
             // ── Install / Remove ──
             "install" => {
                 let names = extract_string_array(data, "names");
-                install_packages(password, &names).await
+                let r = install_packages(password, &names).await;
+                let ok = r.get("error").is_none();
+                crate::audit::log("agent-api", "pkg.install", &names.join(","), ok, "");
+                r
             }
             "remove" => {
                 let names = extract_string_array(data, "names");
-                remove_packages(password, &names).await
+                let r = remove_packages(password, &names).await;
+                let ok = r.get("error").is_none();
+                crate::audit::log("agent-api", "pkg.remove", &names.join(","), ok, "");
+                r
             }
 
             // ── Updates ──
             "check_updates" => check_updates().await,
-            "update_system" => update_system(password).await,
+            "update_system" => {
+                let r = update_system(password).await;
+                let ok = r.get("error").is_none();
+                crate::audit::log("agent-api", "pkg.update_system", "", ok, "");
+                r
+            }
 
             // ── Repository management ──
             "list_repos" => list_repos().await,

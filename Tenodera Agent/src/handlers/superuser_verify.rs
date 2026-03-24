@@ -22,7 +22,10 @@ impl ChannelHandler for SuperuserVerifyHandler {
         let result = if password.is_empty() {
             serde_json::json!({ "ok": false, "error": "password required" })
         } else {
-            verify_sudo_password(password).await
+            let r = verify_sudo_password(password).await;
+            let ok = r.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+            crate::audit::log("agent-api", "superuser.verify", "", ok, "");
+            r
         };
 
         vec![

@@ -17,6 +17,7 @@ Environment=TENODERA_UI_DIR=/usr/share/tenodera/ui
 
 # Security hardening
 ProtectSystem=full
+ReadWritePaths=/etc/tenodera /var/log
 PrivateTmp=yes
 ProtectKernelTunables=yes
 ProtectControlGroups=yes

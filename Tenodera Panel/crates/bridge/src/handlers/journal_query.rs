@@ -58,6 +58,24 @@ async fn query_journal(
     unit: Option<&str>,
     priority: Option<&str>,
 ) -> serde_json::Value {
+    // Validate unit name if provided
+    if let Some(u) = unit {
+        if !u.chars().all(|c| c.is_alphanumeric() || ".@-_:".contains(c)) || u.len() > 256 {
+            return serde_json::json!({ "error": "invalid unit name" });
+        }
+    }
+    // Validate priority (0-7 or named: emerg,alert,crit,err,warning,notice,info,debug)
+    if let Some(p) = priority {
+        let valid = matches!(
+            p,
+            "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7"
+                | "emerg" | "alert" | "crit" | "err" | "warning" | "notice" | "info" | "debug"
+        );
+        if !valid {
+            return serde_json::json!({ "error": "invalid priority" });
+        }
+    }
+
     let mut cmd = tokio::process::Command::new("journalctl");
     cmd.args(["--output=json", "--no-pager"]);
     cmd.arg(format!("--lines={lines}"));

@@ -1498,6 +1498,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "chrono",
  "futures",
  "hyper",
  "hyper-util",
@@ -1516,20 +1517,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
-]
-
-[[package]]
-name = "tenodera-priv-bridge"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "nix",
- "serde",
- "serde_json",
- "tenodera-protocol",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

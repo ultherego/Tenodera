@@ -30,7 +30,10 @@ impl ChannelHandler for SuperuserVerifyHandler {
         } else if user.is_empty() {
             serde_json::json!({ "ok": false, "error": "no user context" })
         } else {
-            verify_password(user, password).await
+            let r = verify_password(user, password).await;
+            let ok = r.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+            crate::audit::log(user, "superuser.verify", "", ok, "");
+            r
         };
 
         vec![

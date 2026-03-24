@@ -88,9 +88,11 @@ Routing logic in `handle()`:
 | `ContainersHandler` | `container.manage` | `list_containers`, `list_images`, `inspect`, `start`, `stop`, `restart`, `remove`, `remove_image`, `pull`, `create`, `logs`, `service_status`, `service_start/stop/restart` | Docker/Podman. Auto-detection of runtime (podman → docker) |
 | `NetworkManageHandler` | `networking.manage` | `list_interfaces`, `firewall_status/rules/enable/disable/add_rule/remove_rule`, `add_bridge`, `add_vlan`, `remove_interface`, `iface_up/down`, `vpn_list/connect/disconnect`, `network_logs` | Network management. Multi-backend firewall (ufw/firewalld/nftables/iptables) |
 | `PackagesHandler` | `packages.manage` | `detect`, `list_installed`, `search`, `package_info`, `install`, `remove`, `check_updates`, `update_system`, `list_repos`, `add_repo`, `remove_repo`, `refresh_repos` | System packages. Auto-detection (pacman/apt/dnf) |
-| `HostsManageHandler` | `hosts.manage` | `list`, `add`, `remove` | Remote host CRUD. Persistence in `~/.config/tenodera/hosts.json` |
+| `HostsManageHandler` | `hosts.manage` | `list`, `add`, `edit`, `remove` | Remote host CRUD. Persistence in `/etc/tenodera/hosts.json`. Input validation on `name` and `address` fields |
 
+### `audit.rs` — Audit logging
 
+Structured audit log writer — appends JSON entries to `/var/log/tenodera_audit.log`. Used by handlers that perform security-relevant actions (host add/edit/remove, superuser verification). Each entry includes timestamp, event type, user, and action-specific details.
 
 ## Implementation details
 

@@ -103,6 +103,17 @@ impl ChannelHandler for ContainersHandler {
             _ => serde_json::json!({ "type": "error", "error": format!("unknown action: {action}") }),
         };
 
+        // Audit mutating container actions
+        match action {
+            "start" | "stop" | "restart" | "remove" | "remove_image" | "pull" | "create"
+            | "service_start" | "service_stop" | "service_restart" => {
+                let target = data.get("id").or(data.get("image")).and_then(|v| v.as_str()).unwrap_or("");
+                let ok = result.get("error").is_none();
+                crate::audit::log("agent-api", &format!("container.{action}"), target, ok, "");
+            }
+            _ => {}
+        }
+
         vec![Message::Data {
             channel: channel.to_string(),
             data: serde_json::json!({ "type": "response", "action": action, "data": result }),
@@ -162,12 +173,18 @@ async fn inspect_container(rt: &str, id: &str) -> serde_json::Value {
     if id.is_empty() {
         return serde_json::json!({ "error": "no container id" });
     }
+    if !is_valid_container_ref(id) {
+        return serde_json::json!({ "error": "invalid container id" });
+    }
     run_cmd(rt, &["inspect", id]).await
 }
 
 async fn container_action_sudo(rt: &str, action: &str, id: &str, password: &str) -> serde_json::Value {
     if id.is_empty() {
         return serde_json::json!({ "error": "no container id" });
+    }
+    if !is_valid_container_ref(id) {
+        return serde_json::json!({ "error": "invalid container id" });
     }
     if password.is_empty() {
         return serde_json::json!({ "error": "password required" });
@@ -178,6 +195,9 @@ async fn container_action_sudo(rt: &str, action: &str, id: &str, password: &str)
 async fn remove_container(rt: &str, id: &str, force: bool) -> serde_json::Value {
     if id.is_empty() {
         return serde_json::json!({ "error": "no container id" });
+    }
+    if !is_valid_container_ref(id) {
+        return serde_json::json!({ "error": "invalid container id" });
     }
     let mut args = vec!["rm"];
     if force {
@@ -192,6 +212,9 @@ async fn remove_image(rt: &str, id: &str, force: bool) -> serde_json::Value {
     if id.is_empty() {
         return serde_json::json!({ "error": "no image id" });
     }
+    if !is_valid_image_ref(id) {
+        return serde_json::json!({ "error": "invalid image reference" });
+    }
     let mut args = vec!["rmi"];
     if force {
         args.push("-f");
@@ -204,6 +227,9 @@ async fn remove_image(rt: &str, id: &str, force: bool) -> serde_json::Value {
 async fn pull_image(rt: &str, image: &str) -> serde_json::Value {
     if image.is_empty() {
         return serde_json::json!({ "error": "no image specified" });
+    }
+    if !is_valid_image_ref(image) {
+        return serde_json::json!({ "error": "invalid image reference" });
     }
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(300),
@@ -467,4 +493,22 @@ fn cmd_result(output: Result<std::process::Output, std::io::Error>, action: &str
         }
         Err(e) => serde_json::json!({ "ok": false, "error": e.to_string(), "action": action }),
     }
+}
+
+/// Valid container reference: hex ID, name (alphanumeric + hyphens/underscores/dots).
+fn is_valid_container_ref(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 256
+        && !id.starts_with('-')
+        && id.chars().all(|c| c.is_alphanumeric() || "-_.".contains(c))
+}
+
+/// Valid image reference: registry/repo:tag format — alphanumeric, dots, hyphens,
+/// underscores, slashes, colons.
+fn is_valid_image_ref(image: &str) -> bool {
+    !image.is_empty()
+        && image.len() <= 512
+        && !image.starts_with('-')
+        && image.chars().all(|c| c.is_alphanumeric() || "-_./: ".contains(c))
+        && !image.contains("..")
 }

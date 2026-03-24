@@ -30,6 +30,7 @@ Environment=TENODERA_UI_DIR=/usr/share/tenodera/ui
 
 # Security hardening
 ProtectSystem=full
+ReadWritePaths=/etc/tenodera /var/log
 PrivateTmp=yes
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
@@ -43,36 +44,12 @@ WantedBy=multi-user.target
 
 | Directive | Description |
 |-----------|-------------|
-| `ProtectSystem=full` | /usr, /boot, /efi read-only (but /etc writable — needed for hosts.json) |
+| `ProtectSystem=full` | /usr, /boot, /efi, /etc read-only (except paths listed in ReadWritePaths) |
+| `ReadWritePaths=/etc/tenodera /var/log` | Allow writes to hosts.json config and audit log files |
 | `PrivateTmp=yes` | Isolated /tmp |
 | `ProtectKernelTunables=yes` | Block /proc/sys, /sys writes |
 | `ProtectControlGroups=yes` | Block writes to /sys/fs/cgroup |
 | `LockPersonality=yes` | Block execution domain changes |
-
-## tenodera-priv-bridge.service
-
-Privileged helper running as root with socket activation:
-
-```ini
-[Unit]
-Description=Tenodera Privileged Bridge (Rust)
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/tenodera-priv-bridge
-StandardInput=socket
-User=root
-
-# Hardening (relaxed — requires root)
-NoNewPrivileges=false          # Root must escalate
-ProtectSystem=strict
-ProtectHome=read-only
-PrivateTmp=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-RestrictSUIDSGID=yes
-```
 
 ## Installation
 
@@ -80,10 +57,9 @@ RestrictSUIDSGID=yes
 # Copy binaries
 sudo cp target/release/tenodera-gateway /usr/local/bin/
 sudo cp target/release/tenodera-bridge /usr/local/bin/
-sudo cp target/release/tenodera-priv-bridge /usr/local/bin/
 
 # Copy service files
-sudo cp systemd/*.service /etc/systemd/system/
+sudo cp systemd/tenodera-gateway.service /etc/systemd/system/
 
 # Install UI
 sudo mkdir -p /usr/share/tenodera/ui
@@ -126,5 +102,4 @@ sudo systemctl edit tenodera-gateway
 
 ```bash
 journalctl -u tenodera-gateway -f     # live gateway logs
-journalctl -u tenodera-priv-bridge -f # live priv-bridge logs
 ```

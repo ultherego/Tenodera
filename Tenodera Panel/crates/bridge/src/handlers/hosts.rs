@@ -64,8 +64,7 @@ struct HostsConfig {
 // ── Config persistence ──────────────────────────────────────────
 
 fn config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
-    PathBuf::from(home).join(".config/tenodera/hosts.json")
+    PathBuf::from("/etc/tenodera/hosts.json")
 }
 
 fn load_config() -> HostsConfig {
@@ -77,9 +76,6 @@ fn load_config() -> HostsConfig {
 
 fn save_config(config: &HostsConfig) -> Result<(), String> {
     let path = config_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())
 }
@@ -102,13 +98,14 @@ impl ChannelHandler for HostsManageHandler {
 
     async fn data(&self, channel: &str, data: &Value) -> Vec<Message> {
         let action = data.get("action").and_then(|a| a.as_str()).unwrap_or("");
+        let user = data.get("_user").and_then(|u| u.as_str()).unwrap_or("");
 
         let result = match action {
             "list" => action_list(),
             "add" => {
                 let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let address = data.get("address").and_then(|v| v.as_str()).unwrap_or("");
-                let user = data.get("user").and_then(|v| v.as_str()).unwrap_or("");
+                let user_field = data.get("user").and_then(|v| v.as_str()).unwrap_or("");
                 let ssh_port = data
                     .get("ssh_port")
                     .and_then(|v| v.as_u64())
@@ -117,13 +114,16 @@ impl ChannelHandler for HostsManageHandler {
                 let agent_port = data.get("agent_port").and_then(|v| v.as_u64()).unwrap_or(9091) as u16;
                 let api_key = data.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
                 let agent_tls = data.get("agent_tls").and_then(|v| v.as_bool()).unwrap_or(false);
-                action_add(name, address, user, ssh_port, transport, agent_port, api_key, agent_tls)
+                let r = action_add(name, address, user_field, ssh_port, transport, agent_port, api_key, agent_tls);
+                let ok = r.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                crate::audit::log(user, "host.add", address, ok, name);
+                r
             }
             "edit" => {
                 let id = data.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let address = data.get("address").and_then(|v| v.as_str()).unwrap_or("");
-                let user = data.get("user").and_then(|v| v.as_str()).unwrap_or("");
+                let user_field = data.get("user").and_then(|v| v.as_str()).unwrap_or("");
                 let ssh_port = data
                     .get("ssh_port")
                     .and_then(|v| v.as_u64())
@@ -132,11 +132,17 @@ impl ChannelHandler for HostsManageHandler {
                 let agent_port = data.get("agent_port").and_then(|v| v.as_u64()).unwrap_or(9091) as u16;
                 let api_key = data.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
                 let agent_tls = data.get("agent_tls").and_then(|v| v.as_bool()).unwrap_or(false);
-                action_edit(id, name, address, user, ssh_port, transport, agent_port, api_key, agent_tls)
+                let r = action_edit(id, name, address, user_field, ssh_port, transport, agent_port, api_key, agent_tls);
+                let ok = r.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                crate::audit::log(user, "host.edit", address, ok, name);
+                r
             }
             "remove" => {
                 let id = data.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                action_remove(id)
+                let r = action_remove(id);
+                let ok = r.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                crate::audit::log(user, "host.remove", id, ok, "");
+                r
             }
             _ => json!({ "action": action, "error": "unknown action" }),
         };

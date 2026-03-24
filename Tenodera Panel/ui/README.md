@@ -46,7 +46,7 @@ login(user, password): Promise<{ session_id, user }>
 React Context + `useTransport()` hook for transparent routing:
 
 - Without `hostId` → channels go to local bridge
-- With `hostId` → adds `{ host: hostId }` to Open options → gateway routes via SSH to remote bridge
+- With `hostId` → adds `{ host: hostId }` to Open options → gateway routes to remote agent
 
 ```tsx
 <HostTransportProvider value="remote-host-id">

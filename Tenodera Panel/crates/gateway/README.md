@@ -9,11 +9,11 @@ The gateway is the central server accessible from the browser. It handles:
 2. **WebSocket** — upgrade after auth → bridge to bridge/agent
 3. **UI serving** — static React files
 4. **TLS** — optional encryption (rustls)
-5. **Multi-host** — channel routing to local bridge or remote agents (SSH tunnel + sshpass)
+5. **Multi-host** — channel routing to local bridge or remote agents (direct WebSocket)
 
 ```
-Browser → HTTPS/WSS → Gateway (:9090) → stdin/stdout → Bridge (local)
-                                       → SSH tunnel (sshpass) → Agent (remote)
+Browser → HTTPS/WSS → Gateway (:9090) → stdin/stdout → Bridge (localhost)
+                                       → WS/WSS → Agent (remote host)
 ```
 
 ## Modules
@@ -79,7 +79,7 @@ WebSocket flow:
 - `remote_bridges: Vec<BridgeProcess>` — vector of remote bridges
 - When client opens channel with `host != "localhost"`, gateway:
   1. Looks up host definition in `hosts_config`
-  2. Spawns remote bridge via SSH
+  2. Connects to remote agent via WebSocket (direct or SSH tunnel depending on `transport` field)
   3. Registers channel → bridge index mapping
 
 ### `session.rs` — Session management
@@ -88,11 +88,12 @@ WebSocket flow:
 - **Session:**
   - `id: String` (UUID v4)
   - `user: String`
-  - `password: String` — session password stored in memory (Cockpit model, used for SSH)
+  - `password: String` — session password stored in memory
   - `created_at: Instant`
+  - `last_activity: Instant` — updated on every WebSocket message
 - **Debug:** Custom impl hiding password (`***`)
-- **Idle timeout:** 15 minutes (900s) — sessions expire automatically
-- **Operations:** `create(user, password)`, `validate(session_id)` (updates `last_active`), `remove(session_id)`
+- **Idle timeout:** 15 minutes (900s) — sessions expire based on `last_activity`, not `created_at`
+- **Operations:** `create(user, password)`, `validate(session_id)`, `touch(session_id)` (refresh `last_activity`), `remove(session_id)`
 
 ### `bridge_transport.rs` — Connection management
 
@@ -104,22 +105,21 @@ BridgeProcess::spawn(bridge_bin) -> BridgeProcess
 - Creates `mpsc` channels (256 buf) for stdin/stdout
 - Spawns 2 tokio tasks: reader (stdout→mpsc) and writer (mpsc→stdin)
 
-**AgentConnection — Remote agent connection (SSH tunnel + sshpass):**
+**AgentConnection — Remote agent connection:**
+```rust
+AgentConnection::connect(address, port, api_key, use_tls) -> AgentConnection
+```
+- Direct WebSocket connection to the remote agent
+- API key authentication — sent as `?api_key=...` query parameter (auto-generated during `make register` with `TRANSPORT=agent`)
+- Optional TLS (WSS) when `agent_tls` is configured
+- Returns `AgentConnection` with mpsc channels for bidirectional message passing
+
+**Legacy SSH tunnel (deprecated, still supported):**
 ```rust
 AgentConnection::connect_via_ssh_tunnel(ssh_user, password, address, ssh_port, agent_port)
   -> (AgentConnection, Child)
 ```
-- Opens SSH tunnel: `sshpass -e ssh -N -L <local_port>:127.0.0.1:<agent_port> <ssh_user>@<address>`
-- Password passed via `SSHPASS` environment variable (Cockpit model)
-- `StrictHostKeyChecking=accept-new` — TOFU
-- After establishing the tunnel, connects to the agent via WebSocket on `127.0.0.1:<local_port>`
-- Returns `AgentConnection` (mpsc channels) + `Child` (SSH process to kill on drop)
-
-**AgentConnection — Direct connection (Direct mode):**
-```rust
-AgentConnection::connect(address, port, api_key, use_tls) -> AgentConnection
-```
-- WebSocket to agent with optional API key and TLS
+- Opens SSH tunnel via `sshpass` — kept for backward compatibility with `transport: "ssh"` hosts
 
 ### `pam.rs` — PAM authentication
 
@@ -160,9 +160,17 @@ All settings from environment variables:
 - Integration with axum via `hyper_util` + `TokioIo` wrapper
 - Graceful shutdown: `tokio::signal::ctrl_c()`
 
+### `audit.rs` — Audit logging
+
+Structured audit log writer — appends JSON entries to `/var/log/tenodera_audit.log`. Logs security-relevant gateway events:
+- `login` / `logout` — user authentication
+- `host.add` / `host.edit` / `host.remove` — host management changes
+
+Each entry includes ISO 8601 timestamp, event type, user, and action-specific details.
+
 ### `hosts_config.rs` — Remote host configuration
 
-- File: `~/.config/tenodera/hosts.json`
+- File: `/etc/tenodera/hosts.json`
 - Structure:
 ```json
 [
@@ -173,8 +181,8 @@ All settings from environment variables:
     "user": "",
     "ssh_port": 22,
     "agent_port": 9091,
-    "transport": "ssh",
-    "api_key": "",
+    "transport": "agent",
+    "api_key": "a1b2c3d4...auto-generated-256-bit-hex",
     "agent_tls": false,
     "added_at": "2026-03-22T10:00:00Z"
   }
@@ -183,7 +191,8 @@ All settings from environment variables:
 - `load()` — reads file, returns default empty config if file is missing
 - `find_host(id)` — looks up host by ID
 - `effective_user(session_user)` — if `user` is empty, uses `session_user`
-- `Transport`: `Ssh` (sshpass tunnel) or `Agent` (direct WebSocket)
+- `Transport`: `Ssh` (sshpass tunnel) or `Agent` (direct WebSocket with API key authentication)
+- `api_key`: per-agent key auto-generated by `make register TRANSPORT=agent` — gateway sends it on every WebSocket connection to the agent
 
 ## Authentication flow (end-to-end)
 
@@ -191,12 +200,14 @@ All settings from environment variables:
 1. POST /api/auth/login { user, password }
 2. pam::authenticate() → unix_chkpwd user nullok
 3. SessionStore::create(user, password)
-4. → 200 { session_id, user }
-5. GET /api/ws?session_id=uuid-...
-6. SessionStore::validate(id) — check existence + timeout
-7. BridgeProcess::spawn(bridge_bin) — local bridge
-8. ↔ WebSocket ↔ Bridge stdin/stdout ↔ System
-9. For remote hosts: AgentConnection::connect_via_ssh_tunnel(ssh_user, password, ...)
+4. audit_log("login", user)
+5. → 200 { session_id, user }
+6. GET /api/ws?session_id=uuid-...
+7. SessionStore::validate(id) — check existence + idle timeout
+8. BridgeProcess::spawn(bridge_bin) — local bridge
+9. ↔ WebSocket ↔ Bridge stdin/stdout ↔ System
+10. For remote hosts: AgentConnection::connect(address, port, api_key, tls) — api_key verified by agent
+11. Each WS message → SessionStore::touch(id) — refresh idle timer
 ```
 
 ## Dependencies
@@ -214,9 +225,10 @@ All settings from environment variables:
 ## Security
 
 - Sessions in memory (not on disk)
-- 15 min session timeout
+- 15 min idle session timeout (refreshed on activity)
 - Per-user bridge (privilege isolation)
-- SSH with `StrictHostKeyChecking=accept-new` (TOFU)
-- Session password used for SSH via `sshpass` (Cockpit model)
+- Agent connections with per-agent API key (256-bit, auto-generated) + optional TLS
+- Audit logging to `/var/log/tenodera_audit.log`
+- Input validation on all user-facing endpoints
 - TLS optional but recommended
 - CORS: `AllowOrigin::any()` (to be replaced in production)

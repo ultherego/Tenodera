@@ -61,8 +61,7 @@ pub struct HostsConfig {
 }
 
 fn config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
-    PathBuf::from(home).join(".config/tenodera/hosts.json")
+    PathBuf::from("/etc/tenodera/hosts.json")
 }
 
 pub fn find_host(host_id: &str) -> Option<HostEntry> {

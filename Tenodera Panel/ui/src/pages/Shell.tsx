@@ -141,6 +141,13 @@ export function Shell({ sessionId: _sessionId, user, onLogout }: ShellProps) {
     return () => disconnect();
   }, [loadHosts]);
 
+  /* ── poll hosts list every 5s ── */
+  useEffect(() => {
+    if (!connected) return;
+    const interval = setInterval(loadHosts, 5000);
+    return () => clearInterval(interval);
+  }, [connected, loadHosts]);
+
   /* ── switch active host ── */
   const switchHost = useCallback((host: HostEntry | null) => {
     setActiveHost(host);

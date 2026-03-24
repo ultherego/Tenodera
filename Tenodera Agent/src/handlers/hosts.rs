@@ -36,8 +36,7 @@ struct HostsConfig {
 // ── Config persistence ──────────────────────────────────────────
 
 fn config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
-    PathBuf::from(home).join(".config/tenodera/hosts.json")
+    PathBuf::from("/etc/tenodera/hosts.json")
 }
 
 fn load_config() -> HostsConfig {
@@ -49,9 +48,6 @@ fn load_config() -> HostsConfig {
 
 fn save_config(config: &HostsConfig) -> Result<(), String> {
     let path = config_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())
 }

@@ -15,6 +15,7 @@ pub struct Session {
     pub user: String,
     pub password: String,
     pub created_at: std::time::Instant,
+    pub last_activity: std::time::Instant,
 }
 
 impl std::fmt::Debug for Session {
@@ -24,6 +25,7 @@ impl std::fmt::Debug for Session {
             .field("user", &self.user)
             .field("password", &"***")
             .field("created_at", &self.created_at)
+            .field("last_activity", &self.last_activity)
             .finish()
     }
 }
@@ -42,11 +44,13 @@ impl SessionStore {
     }
 
     pub async fn create(&self, user: String, password: String) -> Session {
+        let now = std::time::Instant::now();
         let session = Session {
             id: Uuid::new_v4().to_string(),
             user,
             password,
-            created_at: std::time::Instant::now(),
+            created_at: now,
+            last_activity: now,
         };
         self.inner.write().await.insert(session.id.clone(), session.clone());
         session
@@ -54,6 +58,13 @@ impl SessionStore {
 
     pub async fn get(&self, id: &str) -> Option<Session> {
         self.inner.read().await.get(id).cloned()
+    }
+
+    /// Update last_activity timestamp for the given session.
+    pub async fn touch(&self, id: &str) {
+        if let Some(session) = self.inner.write().await.get_mut(id) {
+            session.last_activity = std::time::Instant::now();
+        }
     }
 
     pub async fn remove(&self, id: &str) {

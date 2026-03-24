@@ -36,7 +36,14 @@ pub async fn logout(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LogoutRequest>,
 ) -> StatusCode {
+    let user = state
+        .sessions
+        .get(&req.session_id)
+        .await
+        .map(|s| s.user.clone())
+        .unwrap_or_default();
     state.sessions.remove(&req.session_id).await;
+    crate::audit::log(&user, "logout", "", true, "");
     tracing::info!(session_id = %req.session_id, "session destroyed via logout");
     StatusCode::OK
 }
@@ -63,6 +70,7 @@ pub async fn login(
 
     if !result.success {
         tracing::warn!(user = %req.user, "authentication failed");
+        crate::audit::log(&req.user, "login", "", false, "authentication failed");
         return Err((
             StatusCode::UNAUTHORIZED,
             Json(LoginError {
@@ -72,6 +80,7 @@ pub async fn login(
     }
 
     let session = state.sessions.create(req.user.clone(), req.password).await;
+    crate::audit::log(&session.user, "login", "", true, "");
 
     Ok(Json(LoginResponse {
         session_id: session.id,

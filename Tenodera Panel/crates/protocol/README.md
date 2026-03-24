@@ -4,7 +4,7 @@ Shared type library defining the channel-based communication protocol between al
 
 ## Role in architecture
 
-`tenodera-protocol` is a **library** crate — it does not produce any binary executable. It is a dependency for all other crates in the workspace (`gateway`, `bridge`, `priv-bridge`). It defines the common "language" for message exchange: enums, structs, and error types that guarantee consistent JSON serialization/deserialization between the frontend, gateway, and bridge.
+`tenodera-protocol` is a **library** crate — it does not produce any binary executable. It is a dependency for all other crates in the workspace (`gateway`, `bridge`). It defines the common "language" for message exchange: enums, structs, and error types that guarantee consistent JSON serialization/deserialization between the frontend, gateway, and bridge.
 
 ## Modules
 

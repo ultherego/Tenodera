@@ -28,11 +28,11 @@ deps: deps-system deps-rust deps-node
 deps-system:
 	@echo "==> Installing system build dependencies..."
 	@if command -v apt-get >/dev/null 2>&1; then \
-		sudo apt-get update && sudo apt-get install -y build-essential pkg-config libssl-dev libpam0g-dev curl sshpass; \
+		sudo apt-get update && sudo apt-get install -y build-essential pkg-config libssl-dev libpam0g-dev curl jq sshpass; \
 	elif command -v dnf >/dev/null 2>&1; then \
-		sudo dnf install -y gcc make pkg-config openssl-devel pam-devel curl sshpass; \
+		sudo dnf install -y gcc make pkg-config openssl-devel pam-devel curl jq sshpass; \
 	elif command -v pacman >/dev/null 2>&1; then \
-		sudo pacman -Sy --needed --noconfirm base-devel openssl pam pkg-config curl sshpass; \
+		sudo pacman -Sy --needed --noconfirm base-devel openssl pam pkg-config curl jq sshpass; \
 	else \
 		echo "ERROR: Unsupported package manager. Install manually: gcc, make, pkg-config, openssl-dev, pam-dev, curl"; \
 		exit 1; \
@@ -88,6 +88,13 @@ install: $(GATEWAY_BIN) $(BRIDGE_BIN) ui/dist/index.html
 	sudo cp -r ui/dist/* $(UIDIR)/
 	@echo "==> Setting up directories..."
 	sudo mkdir -p $(CONFDIR)/tls
+	@if [ ! -f $(CONFDIR)/hosts.json ]; then \
+		echo '{"hosts":[]}' | sudo tee $(CONFDIR)/hosts.json > /dev/null; \
+		sudo chmod 644 $(CONFDIR)/hosts.json; \
+		echo "    Created $(CONFDIR)/hosts.json"; \
+	else \
+		echo "    $(CONFDIR)/hosts.json already exists — skipping"; \
+	fi
 	@echo "==> Installing systemd services..."
 	sudo cp systemd/tenodera-gateway.service $(SYSTEMDDIR)/
 	@# Override bind to 0.0.0.0 for production
@@ -96,6 +103,8 @@ install: $(GATEWAY_BIN) $(BRIDGE_BIN) ui/dist/index.html
 		| sudo tee $(SYSTEMDDIR)/tenodera-gateway.service.d/bind.conf > /dev/null
 	sudo systemctl daemon-reload
 	sudo systemctl enable --now tenodera-gateway
+	@echo "==> Installing logrotate config..."
+	sudo install -m 644 logrotate/tenodera /etc/logrotate.d/tenodera
 	@echo ""
 	@echo "✓ Tenodera Panel installed and running"
 	@echo "  Gateway: http://$$(hostname -I | awk '{print $$1}'):9090"
@@ -125,7 +134,10 @@ uninstall:
 	-sudo pkill -f tenodera-bridge 2>/dev/null || true
 	-sudo rm -f $(BINDIR)/tenodera-gateway $(BINDIR)/tenodera-bridge
 	-sudo rm -rf $(UIDIR)
-	@echo "✓ Removed (TLS config in $(CONFDIR) kept)"
+	-sudo rm -rf $(CONFDIR)
+	-sudo rm -f /etc/logrotate.d/tenodera
+	-sudo rm -f /var/log/tenodera*
+	@echo "✓ Tenodera Panel fully removed"
 
 # ── Clean ─────────────────────────────────────────────────
 

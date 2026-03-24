@@ -1,3 +1,4 @@
+pub mod audit;
 mod auth;
 mod config;
 mod handler;

@@ -59,7 +59,10 @@ impl ChannelHandler for SystemdManageHandler {
                 } else if password.is_empty() {
                     serde_json::json!({ "ok": false, "error": "password required" })
                 } else {
-                    systemctl_action(action, unit, password).await
+                    let r = systemctl_action(action, unit, password).await;
+                    let ok = r.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                    crate::audit::log("agent-api", action, unit, ok, "");
+                    r
                 }
             }
             "status" => {

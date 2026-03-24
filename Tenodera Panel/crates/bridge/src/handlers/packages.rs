@@ -26,6 +26,7 @@ impl ChannelHandler for PackagesHandler {
     async fn data(&self, channel: &str, data: &serde_json::Value) -> Vec<Message> {
         let action = data.get("action").and_then(|a| a.as_str()).unwrap_or("");
         let password = data.get("password").and_then(|p| p.as_str()).unwrap_or("");
+        let user = data.get("_user").and_then(|u| u.as_str()).unwrap_or("");
 
         let result = match action {
             // ── Detection ──
@@ -45,16 +46,27 @@ impl ChannelHandler for PackagesHandler {
             // ── Install / Remove ──
             "install" => {
                 let names = extract_string_array(data, "names");
-                install_packages(password, &names).await
+                let r = install_packages(password, &names).await;
+                let ok = r.get("error").is_none();
+                crate::audit::log(user, "pkg.install", &names.join(","), ok, "");
+                r
             }
             "remove" => {
                 let names = extract_string_array(data, "names");
-                remove_packages(password, &names).await
+                let r = remove_packages(password, &names).await;
+                let ok = r.get("error").is_none();
+                crate::audit::log(user, "pkg.remove", &names.join(","), ok, "");
+                r
             }
 
             // ── Updates ──
             "check_updates" => check_updates().await,
-            "update_system" => update_system(password).await,
+            "update_system" => {
+                let r = update_system(password).await;
+                let ok = r.get("error").is_none();
+                crate::audit::log(user, "pkg.update_system", "", ok, "");
+                r
+            }
 
             // ── Repository management ──
             "list_repos" => list_repos().await,

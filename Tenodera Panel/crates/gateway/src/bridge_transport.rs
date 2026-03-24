@@ -32,28 +32,6 @@ impl BridgeProcess {
         Self::spawn_command(cmd).await
     }
 
-    /// Spawn a tenodera-bridge on a remote host via SSH.
-    /// Uses sshpass with the session password (Cockpit model).
-    pub async fn spawn_remote(
-        ssh_user: &str,
-        password: &str,
-        address: &str,
-        ssh_port: u16,
-        remote_bridge_bin: &str,
-    ) -> anyhow::Result<Self> {
-        let mut cmd = Command::new("sshpass");
-        cmd.env("SSHPASS", password);
-        cmd.args([
-            "-e",
-            "ssh",
-            "-o", "StrictHostKeyChecking=accept-new",
-            "-p", &ssh_port.to_string(),
-            &format!("{ssh_user}@{address}"),
-            remote_bridge_bin,
-        ]);
-        Self::spawn_command(cmd).await
-    }
-
     async fn spawn_command(mut cmd: Command) -> anyhow::Result<Self> {
         let mut child = cmd
             .stdin(Stdio::piped())
