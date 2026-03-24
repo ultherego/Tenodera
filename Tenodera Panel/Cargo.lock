@@ -1502,6 +1502,7 @@ dependencies = [
  "futures",
  "hyper",
  "hyper-util",
+ "libc",
  "rustls",
  "rustls-pemfile",
  "serde",
@@ -1517,6 +1518,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

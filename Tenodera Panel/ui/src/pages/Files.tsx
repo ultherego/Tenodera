@@ -25,10 +25,13 @@ export function Files({ user }: FilesProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suRef = useRef(su);
+  suRef.current = su;
 
   const fetchDir = useCallback((dirPath: string) => {
     const opts: Record<string, string> = { path: dirPath };
-    if (su.active && su.password) opts.password = su.password;
+    const currentSu = suRef.current;
+    if (currentSu.active && currentSu.password) opts.password = currentSu.password;
     request('file.list', opts).then((results) => {
       const data = results[0] as { path: string; entries: FileEntry[]; error?: string } | undefined;
       if (data?.entries) {
@@ -38,7 +41,7 @@ export function Files({ user }: FilesProps) {
         setShowSuggestions(false);
       }
     });
-  }, [su]);
+  }, [request]);
 
   // Fetch suggestions for autocomplete
   const fetchSuggestions = useCallback((inputPath: string) => {
@@ -48,7 +51,8 @@ export function Files({ user }: FilesProps) {
     const prefix = inputPath.substring(lastSlash + 1).toLowerCase();
 
     const opts: Record<string, string> = { path: parentDir };
-    if (su.active && su.password) opts.password = su.password;
+    const currentSu = suRef.current;
+    if (currentSu.active && currentSu.password) opts.password = currentSu.password;
     request('file.list', opts).then((results) => {
       const data = results[0] as { path: string; entries: FileEntry[] } | undefined;
       if (data?.entries) {
@@ -65,11 +69,18 @@ export function Files({ user }: FilesProps) {
       setSuggestions([]);
       setShowSuggestions(false);
     });
-  }, [su]);
+  }, [request]);
 
   useEffect(() => {
     fetchDir(homeDir);
   }, [homeDir, fetchDir]);
+
+  // Reset to home when superuser mode is deactivated
+  useEffect(() => {
+    if (!su.active) {
+      fetchDir(homeDir);
+    }
+  }, [su.active]);
 
   // Close suggestions on click outside
   useEffect(() => {

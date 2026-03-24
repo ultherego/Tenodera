@@ -11,9 +11,12 @@ pub fn log(user: &str, action: &str, target: &str, ok: bool, details: &str) {
     let result = if ok { "ok" } else { "fail" };
     let line = format!("[{ts}] user={user} action={action} target={target} result={result} details={details}\n");
 
-    let _ = OpenOptions::new()
+    if let Err(e) = OpenOptions::new()
         .create(true)
         .append(true)
         .open(AUDIT_LOG)
-        .and_then(|mut f| f.write_all(line.as_bytes()));
+        .and_then(|mut f| f.write_all(line.as_bytes()))
+    {
+        tracing::warn!(error = %e, "failed to write audit log to {}", AUDIT_LOG);
+    }
 }

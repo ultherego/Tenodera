@@ -83,7 +83,7 @@ pub async fn login(
     crate::audit::log(&session.user, "login", "", true, "");
 
     Ok(Json(LoginResponse {
-        session_id: session.id,
-        user: session.user,
+        session_id: session.id.clone(),
+        user: session.user.clone(),
     }))
 }

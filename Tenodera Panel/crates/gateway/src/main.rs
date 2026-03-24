@@ -36,9 +36,19 @@ async fn main() -> anyhow::Result<()> {
     let config = GatewayConfig::default();
     let bind_addr = config.bind_addr;
 
+    // Disable core dumps so FreeIPA passwords from sessions cannot
+    // leak via /proc/<pid>/mem or crash dumps.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::prctl(libc::PR_SET_DUMPABLE, 0);
+    }
+
+    let sessions = SessionStore::new(config.idle_timeout_secs);
+    sessions.clone().spawn_reaper();
+
     let state = Arc::new(AppState {
         config,
-        sessions: SessionStore::new(),
+        sessions,
     });
 
     // Build TLS acceptor before moving state into router

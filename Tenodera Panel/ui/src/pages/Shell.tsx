@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, createContext, useContext, useCallback } from 'react';
+import { useEffect, useState, useRef, useMemo, createContext, useContext, useCallback } from 'react';
 import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
 import { connect, disconnect, request, openChannel, type Message } from '../api/transport.ts';
 import { HostTransportProvider } from '../api/HostTransportContext.tsx';
@@ -249,8 +249,10 @@ export function Shell({ sessionId: _sessionId, user, onLogout }: ShellProps) {
     verifyPassword();
   };
 
+  const suCtx = useMemo(() => ({ active: suActive, password: suPassword }), [suActive, suPassword]);
+
   return (
-    <SuperuserContext.Provider value={{ active: suActive, password: suPassword }}>
+    <SuperuserContext.Provider value={suCtx}>
       <div style={S.wrapper}>
         {/* ── Top Bar ── */}
         <header style={S.topBar}>
